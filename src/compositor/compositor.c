@@ -18,6 +18,9 @@
 #include "meta-background-actor-private.h"
 #include "window-private.h" /* to check window->hidden */
 #include "display-private.h" /* for meta_display_lookup_x_window() */
+#ifdef HAVE_WAYLAND
+#include "meta-wayland-private.h"
+#endif
 #include <X11/extensions/shape.h>
 #include <X11/extensions/Xcomposite.h>
 
@@ -92,6 +95,7 @@ add_win (MetaWindow *window)
   sync_actor_stacking (info);
 }
 
+#ifndef HAVE_WAYLAND
 static void
 process_damage (MetaCompositor     *compositor,
                 XDamageNotifyEvent *event,
@@ -108,6 +112,7 @@ process_damage (MetaCompositor     *compositor,
 
   meta_window_actor_process_damage (window_actor, event);
 }
+#endif
 
 static void
 process_property_notify (MetaCompositor	*compositor,
@@ -149,6 +154,7 @@ process_property_notify (MetaCompositor	*compositor,
   DEBUG_TRACE ("process_property_notify: unknown\n");
 }
 
+#ifndef HAVE_WAYLAND
 static Window
 get_output_window (MetaScreen *screen)
 {
@@ -179,6 +185,7 @@ get_output_window (MetaScreen *screen)
 
   return output;
 }
+#endif /* HAVE_WAYLAND */
 
 /**
  * meta_get_stage_for_screen:
@@ -269,6 +276,7 @@ meta_get_window_actors (MetaScreen *screen)
   return info->windows;
 }
 
+#ifndef HAVE_WAYLAND
 static void
 do_set_stage_input_region (MetaScreen   *screen,
                            XserverRegion region)
@@ -287,11 +295,18 @@ do_set_stage_input_region (MetaScreen   *screen,
   meta_display_add_ignored_crossing_serial (display, XNextRequest (xdpy));
   XFixesSetWindowShapeRegion (xdpy, info->output, ShapeInput, 0, 0, region);
 }
+#endif
 
 void
 meta_set_stage_input_region (MetaScreen   *screen,
                              XserverRegion region)
 {
+  /* As a wayland compositor we can simply ignore all this trickery
+   * for setting an input region on the stage for capturing events in
+   * clutter since all input comes to us first and we get to choose
+   * who else see it.
+   */
+#ifndef HAVE_WAYLAND
   MetaCompScreen *info = meta_screen_get_compositor_data (screen);
   MetaDisplay  *display = meta_screen_get_display (screen);
   Display      *xdpy    = meta_display_get_xdisplay (display);
@@ -315,6 +330,7 @@ meta_set_stage_input_region (MetaScreen   *screen,
           XFixesCopyRegion (xdpy, info->pending_input_region, region);
         }
     } 
+#endif
 }
 
 void
@@ -450,6 +466,7 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
                                MetaScreen     *screen)
 {
   MetaCompScreen *info;
+#ifndef HAVE_WAYLAND
   MetaDisplay    *display       = meta_screen_get_display (screen);
   Display        *xdisplay      = meta_display_get_xdisplay (display);
   int             screen_number = meta_screen_get_screen_number (screen);
@@ -460,10 +477,19 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
   long            event_mask;
   guint           n_retries;
   guint           max_retries;
+#else
+  MetaWaylandCompositor *wayland_compositor;
+#endif
 
   /* Check if the screen is already managed */
   if (meta_screen_get_compositor_data (screen))
     return;
+
+  /* If we're running with wayland, connected to a headless xwayland
+   * server then all the windows are implicitly redirected offscreen
+   * already and it would generate an error to try and explicitly
+   * redirect them via XCompositeRedirectSubwindows() */
+#ifndef HAVE_WAYLAND
 
   if (meta_get_replace_current_wm ())
     max_retries = 5;
@@ -496,6 +522,7 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
       n_retries++;
       g_usleep (G_USEC_PER_SEC);
     }
+#endif
 
   info = g_new0 (MetaCompScreen, 1);
   /*
@@ -504,7 +531,13 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
    * We have to initialize info->pending_input_region to an empty region explicitly, 
    * because None value is used to mean that the whole screen is an input region.
    */
+#ifndef HAVE_WAYLAND
   info->pending_input_region = XFixesCreateRegion (xdisplay, NULL, 0);
+#else
+  /* Stage input region trickery isn't needed when we're running as a
+   * wayland compositor. */
+  info->pending_input_region = None;
+#endif
 
   info->screen = screen;
 
@@ -515,6 +548,12 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
 
   meta_screen_set_cm_selection (screen);
 
+  /* We will have already created a stage if running as a wayland
+   * compositor... */
+#ifdef HAVE_WAYLAND
+  wayland_compositor = meta_wayland_compositor_get_default ();
+  info->stage = wayland_compositor->stage;
+#else
   info->stage = clutter_stage_new ();
 
   meta_screen_get_size (screen, &width, &height);
@@ -540,6 +579,8 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
 
   XSelectInput (xdisplay, xwin, event_mask);
 
+#endif /* HAVE_WAYLAND */
+
   info->window_group = meta_window_group_new (screen);
   info->background_actor = meta_background_actor_new_for_screen (screen);
   info->overlay_group = clutter_group_new ();
@@ -560,6 +601,8 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
   info->plugin_mgr =
     meta_plugin_manager_get (screen);
   meta_plugin_manager_initialize (info->plugin_mgr);
+
+#ifndef HAVE_WAYLAND
 
   /*
    * Delay the creation of the overlay window as long as we can, to avoid
@@ -588,6 +631,15 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
       info->pending_input_region = None;
     }
 
+#else /* HAVE_WAYLAND */
+
+  /* NB: When running as a wayland compositor we don't need an X composite
+   * overlay window, and we don't need to play any input region tricks
+   * to redirect events into clutter. */
+  info->output = None;
+
+#endif /* HAVE_WAYLAND */
+
   clutter_actor_show (info->overlay_group);
   clutter_actor_show (info->stage);
 }
@@ -596,6 +648,7 @@ void
 meta_compositor_unmanage_screen (MetaCompositor *compositor,
                                  MetaScreen     *screen)
 {
+#ifndef HAVE_WAYLAND
   MetaDisplay    *display       = meta_screen_get_display (screen);
   Display        *xdisplay      = meta_display_get_xdisplay (display);
   Window          xroot         = meta_screen_get_xroot (screen);
@@ -604,8 +657,10 @@ meta_compositor_unmanage_screen (MetaCompositor *compositor,
    * before giving up the window manager selection or the next
    * window manager won't be able to redirect subwindows */
   XCompositeUnredirectSubwindows (xdisplay, xroot, CompositeRedirectManual);
+#endif
 }
 
+#ifndef HAVE_WAYLAND
 /*
  * Shapes the cow so that the given window is exposed,
  * when metaWindow is NULL it clears the shape again
@@ -646,6 +701,7 @@ meta_shape_cow_for_window (MetaScreen *screen,
       XFixesDestroyRegion (xdisplay, output_region);
     }
 }
+#endif
 
 void
 meta_compositor_add_window (MetaCompositor    *compositor,
@@ -667,14 +723,17 @@ meta_compositor_remove_window (MetaCompositor *compositor,
                                MetaWindow     *window)
 {
   MetaWindowActor         *window_actor     = NULL;
+#ifndef HAVE_WAYLAND
   MetaScreen *screen;
   MetaCompScreen *info;
+#endif
 
   DEBUG_TRACE ("meta_compositor_remove_window\n");
   window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
   if (!window_actor)
     return;
 
+#ifndef HAVE_WAYLAND
   screen = meta_window_get_screen (window);
   info = meta_screen_get_compositor_data (screen);
 
@@ -685,6 +744,7 @@ meta_compositor_remove_window (MetaCompositor *compositor,
                                  NULL);
       info->unredirected_window = NULL;
     }
+#endif
 
   meta_window_actor_destroy (window_actor);
 }
@@ -788,6 +848,7 @@ meta_compositor_process_event (MetaCompositor *compositor,
       break;
 
     default:
+#ifndef HAVE_WAYLAND
       if (event->type == meta_display_get_damage_event_base (compositor->display) + XDamageNotify)
         {
           /* Core code doesn't handle damage events, so we need to extract the MetaWindow
@@ -802,13 +863,16 @@ meta_compositor_process_event (MetaCompositor *compositor,
 	  DEBUG_TRACE ("meta_compositor_process_event (process_damage)\n");
           process_damage (compositor, (XDamageNotifyEvent *) event, window);
         }
+#endif
       break;
     }
 
+#ifndef HAVE_WAYLAND
   /* Clutter needs to know about MapNotify events otherwise it will
      think the stage is invisible */
   if (event->type == MapNotify)
     clutter_x11_handle_event (event);
+#endif
 
   /* The above handling is basically just "observing" the events, so we return
    * FALSE to indicate that the event should not be filtered out; if we have
@@ -1118,6 +1182,7 @@ meta_compositor_sync_screen_size (MetaCompositor  *compositor,
 				  guint		   width,
 				  guint		   height)
 {
+#ifndef HAVE_WAYLAND
   MetaDisplay    *display = meta_screen_get_display (screen);
   MetaCompScreen *info    = meta_screen_get_compositor_data (screen);
   Display        *xdisplay;
@@ -1136,18 +1201,28 @@ meta_compositor_sync_screen_size (MetaCompositor  *compositor,
   meta_verbose ("Changed size for stage on screen %d to %dx%d\n",
 		meta_screen_get_screen_number (screen),
 		width, height);
+#else
+  /* It's not clear at the moment how we will be dealing with screen
+   * resizing as a Wayland compositor so for now just abort if we
+   * hit this code. */
+  g_critical ("Unexpected call to meta_compositor_sync_screen_size() "
+              "when running as a wayland compositor");
+#endif
 }
 
 static void
 pre_paint_windows (MetaCompScreen *info)
 {
   GList *l;
+#ifndef HAVE_WAYLAND
   MetaWindowActor *top_window;
   MetaWindowActor *expected_unredirected_window = NULL;
+#endif
 
   if (info->windows == NULL)
     return;
 
+#ifndef HAVE_WAYLAND
   top_window = g_list_last (info->windows)->data;
 
   if (meta_window_actor_should_unredirect (top_window) &&
@@ -1172,6 +1247,7 @@ pre_paint_windows (MetaCompScreen *info)
 
       info->unredirected_window = expected_unredirected_window;
     }
+#endif
 
   for (l = info->windows; l; l = l->next)
     meta_window_actor_pre_paint (l->data);

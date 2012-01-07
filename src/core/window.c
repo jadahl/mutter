@@ -793,12 +793,14 @@ meta_window_should_attach_to_parent (MetaWindow *window)
     }
 }
 
-MetaWindow*
-meta_window_new_with_attrs (MetaDisplay       *display,
-                            Window             xwindow,
-                            gboolean           must_be_viewable,
-                            MetaCompEffect     effect,
-                            XWindowAttributes *attrs)
+static MetaWindow*
+meta_window_new_full (MetaDisplay         *display,
+                      MetaWindowClientType client_type,
+                      MetaWaylandSurface  *surface,
+                      Window               xwindow,
+                      gboolean             must_be_viewable,
+                      MetaCompEffect       effect,
+                      XWindowAttributes   *attrs)
 {
   MetaWindow *window;
   GSList *tmp;
@@ -813,7 +815,8 @@ meta_window_new_with_attrs (MetaDisplay       *display,
 
   meta_verbose ("Attempting to manage 0x%lx\n", xwindow);
 
-  if (meta_display_xwindow_is_a_no_focus_window (display, xwindow))
+  if (client_type == META_WINDOW_CLIENT_TYPE_X11 &&
+      meta_display_xwindow_is_a_no_focus_window (display, xwindow))
     {
       meta_verbose ("Not managing no_focus_window 0x%lx\n",
                     xwindow);
@@ -904,33 +907,39 @@ meta_window_new_with_attrs (MetaDisplay       *display,
 
   meta_error_trap_push_with_return (display);
 
-  /*
-   * XAddToSaveSet can only be called on windows created by a different client.
-   * with Mutter we want to be able to create manageable windows from within
-   * the process (such as a dummy desktop window), so we do not want this
-   * call failing to prevent the window from being managed -- wrap it in its
-   * own error trap (we use the _with_return() version here to ensure that
-   * XSync() is done on the pop, otherwise the error will not get caught).
-   */
-  meta_error_trap_push_with_return (display);
-  XAddToSaveSet (display->xdisplay, xwindow);
-  meta_error_trap_pop_with_return (display);
+  if (client_type == META_WINDOW_CLIENT_TYPE_X11)
+    {
+      /*
+       * XAddToSaveSet can only be called on windows created by a different
+       * client.  with Mutter we want to be able to create manageable windows
+       * from within the process (such as a dummy desktop window), so we do not
+       * want this call failing to prevent the window from being managed --
+       * wrap it in its own error trap (we use the _with_return() version here
+       * to ensure that XSync() is done on the pop, otherwise the error will
+       * not get caught).
+       */
+      meta_error_trap_push_with_return (display);
+      XAddToSaveSet (display->xdisplay, xwindow);
+      meta_error_trap_pop_with_return (display);
 
-  event_mask =
-    PropertyChangeMask | EnterWindowMask | LeaveWindowMask |
-    FocusChangeMask | ColormapChangeMask;
-  if (attrs->override_redirect)
-    event_mask |= StructureNotifyMask;
+      event_mask =
+        PropertyChangeMask | EnterWindowMask | LeaveWindowMask |
+        FocusChangeMask | ColormapChangeMask;
+      if (attrs->override_redirect)
+        event_mask |= StructureNotifyMask;
 
-  /* If the window is from this client (a menu, say) we need to augment
-   * the event mask, not replace it. For windows from other clients,
-   * attrs->your_event_mask will be empty at this point.
-   */
-  XSelectInput (display->xdisplay, xwindow, attrs->your_event_mask | event_mask);
+      /* If the window is from this client (a menu, say) we need to augment the
+       * event mask, not replace it. For windows from other clients,
+       * attrs->your_event_mask will be empty at this point.
+       */
+      XSelectInput (display->xdisplay, xwindow,
+                    attrs->your_event_mask | event_mask);
+    }
 
   has_shape = FALSE;
 #ifdef HAVE_SHAPE
-  if (META_DISPLAY_HAS_SHAPE (display))
+  if (META_DISPLAY_HAS_SHAPE (display) &&
+      client_type == META_WINDOW_CLIENT_TYPE_X11)
     {
       int x_bounding, y_bounding, x_clip, y_clip;
       unsigned w_bounding, h_bounding, w_clip, h_clip;
@@ -986,6 +995,10 @@ meta_window_new_with_attrs (MetaDisplay       *display,
 
   window->dialog_pid = -1;
 
+  window->client_type = client_type;
+#ifdef HAVE_WAYLAND
+  window->surface = surface;
+#endif
   window->xwindow = xwindow;
 
   /* this is in window->screen->display, but that's too annoying to
@@ -1111,7 +1124,11 @@ meta_window_new_with_attrs (MetaDisplay       *display,
   window->mwm_has_move_func = TRUE;
   window->mwm_has_resize_func = TRUE;
 
-  window->decorated = TRUE;
+  if (client_type == META_WINDOW_CLIENT_TYPE_X11)
+    window->decorated = TRUE;
+  else
+    window->decorated = FALSE;
+
   window->has_close_func = TRUE;
   window->has_minimize_func = TRUE;
   window->has_maximize_func = TRUE;
@@ -1179,7 +1196,8 @@ meta_window_new_with_attrs (MetaDisplay       *display,
       window->has_resize_func = FALSE;
     }
 
-  meta_display_register_x_window (display, &window->xwindow, window);
+  if (client_type == META_WINDOW_CLIENT_TYPE_X11)
+    meta_display_register_x_window (display, &window->xwindow, window);
 
   /* Assign this #MetaWindow a sequence number which can be used
    * for sorting.
@@ -1194,7 +1212,8 @@ meta_window_new_with_attrs (MetaDisplay       *display,
 
   meta_window_load_initial_properties (window);
 
-  if (!window->override_redirect)
+  if (!window->override_redirect &&
+      client_type == META_WINDOW_CLIENT_TYPE_X11)
     {
       update_sm_hints (window); /* must come after transient_for */
 
@@ -1479,6 +1498,68 @@ meta_window_new_with_attrs (MetaDisplay       *display,
     g_signal_emit_by_name (window->display, "window-marked-urgent", window);
 
   return window;
+}
+
+#ifdef HAVE_WAYLAND
+MetaWindow *
+meta_window_new_for_wayland (MetaDisplay        *display,
+                             int                 width,
+                             int                 height,
+                             MetaWaylandSurface *surface)
+{
+  XWindowAttributes attrs;
+  MetaScreen *scr = display->screens->data;
+  MetaWindow *window;
+
+  attrs.x = 0;
+  attrs.y = 0;
+  attrs.width = width;
+  attrs.height = height;
+  attrs.border_width = 0;
+  attrs.depth = 24;
+  attrs.visual = NULL;
+  attrs.root = scr->xroot;
+  attrs.class = InputOutput;
+  attrs.bit_gravity = NorthWestGravity;
+  attrs.win_gravity = NorthWestGravity;
+  attrs.backing_store = 0;
+  attrs.backing_planes = ~0;
+  attrs.backing_pixel = 0;
+  attrs.save_under = 0;
+  attrs.colormap = 0;
+  attrs.map_installed = 1;
+  attrs.map_state = IsViewable;
+  attrs.all_event_masks = ~0;
+  attrs.your_event_mask = 0;
+  attrs.do_not_propagate_mask = 0;
+  attrs.override_redirect = 0;
+  attrs.screen = scr->xscreen;
+
+  window = meta_window_new_full (display,
+                                 META_WINDOW_CLIENT_TYPE_WAYLAND,
+                                 surface,
+                                 None,
+                                 TRUE,
+                                 META_COMP_EFFECT_NONE,
+                                 &attrs);
+  return window;
+}
+#endif
+
+MetaWindow*
+meta_window_new_with_attrs (MetaDisplay       *display,
+                            Window             xwindow,
+                            gboolean           must_be_viewable,
+                            MetaCompEffect     effect,
+                            XWindowAttributes *attrs)
+{
+  return meta_window_new_full (display,
+                               META_WINDOW_CLIENT_TYPE_X11,
+                               NULL,
+                               xwindow,
+                               must_be_viewable,
+                               effect,
+                               attrs);
 }
 
 /* This function should only be called from the end of meta_window_new_with_attrs () */

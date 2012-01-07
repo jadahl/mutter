@@ -24,6 +24,10 @@
 #include "compositor-private.h"
 #include "meta-shadow-factory-private.h"
 #include "meta-window-actor-private.h"
+#ifdef HAVE_WAYLAND
+#include "meta-wayland-private.h"
+#include <clutter/wayland/clutter-wayland-surface.h>
+#endif
 
 enum {
   POSITION_CHANGED,
@@ -56,9 +60,11 @@ struct _MetaWindowActorPrivate
   MetaShadow       *focused_shadow;
   MetaShadow       *unfocused_shadow;
 
+#ifndef HAVE_WAYLAND
   Pixmap            back_pixmap;
 
   Damage            damage;
+#endif
 
   guint8            opacity;
   guint8            shadow_opacity;
@@ -75,8 +81,10 @@ struct _MetaWindowActorPrivate
   /* Extracted size-invariant shape used for shadows */
   MetaWindowShape  *shadow_shape;
 
+#ifndef HAVE_WAYLAND
   gint              last_width;
   gint              last_height;
+#endif
   MetaFrameBorders  last_borders;
 
   gint              freeze_count;
@@ -100,22 +108,27 @@ struct _MetaWindowActorPrivate
   guint		    disposed               : 1;
   guint             redecorating           : 1;
 
+#ifndef HAVE_WAYLAND
   guint		    needs_damage_all       : 1;
   guint		    received_damage        : 1;
 
   guint		    needs_pixmap           : 1;
+#endif
   guint             needs_reshape          : 1;
   guint             recompute_focused_shadow   : 1;
   guint             recompute_unfocused_shadow : 1;
+#ifndef HAVE_WAYLAND
   guint		    size_changed           : 1;
+#endif
 
   guint		    needs_destroy	   : 1;
 
   guint             no_shadow              : 1;
 
   guint             no_more_x_calls        : 1;
-
+#ifndef HAVE_WAYLAND
   guint             unredirected           : 1;
+#endif
 };
 
 enum
@@ -145,12 +158,18 @@ static gboolean meta_window_actor_get_paint_volume (ClutterActor       *actor,
                                                     ClutterPaintVolume *volume);
 
 
+#ifndef HAVE_WAYLAND
 static void     meta_window_actor_detach     (MetaWindowActor *self);
+#endif
 static gboolean meta_window_actor_has_shadow (MetaWindowActor *self);
 
 static void meta_window_actor_clear_shape_region    (MetaWindowActor *self);
 static void meta_window_actor_clear_bounding_region (MetaWindowActor *self);
 static void meta_window_actor_clear_shadow_clip     (MetaWindowActor *self);
+
+static void meta_window_actor_update_bounding_region_and_borders (MetaWindowActor *self,
+                                                                  int              width,
+                                                                  int              height);
 
 G_DEFINE_TYPE (MetaWindowActor, meta_window_actor, CLUTTER_TYPE_GROUP);
 
@@ -257,9 +276,11 @@ window_decorated_notify (MetaWindow *mw,
   MetaWindowActor        *self     = META_WINDOW_ACTOR (data);
   MetaWindowActorPrivate *priv     = self->priv;
   MetaFrame              *frame    = meta_window_get_frame (mw);
+#ifndef HAVE_WAYLAND
   MetaScreen             *screen   = priv->screen;
   MetaDisplay            *display  = meta_screen_get_display (screen);
   Display                *xdisplay = meta_display_get_xdisplay (display);
+#endif
   Window                  new_xwindow;
 
   /*
@@ -273,6 +294,7 @@ window_decorated_notify (MetaWindow *mw,
   else
     new_xwindow = meta_window_get_xwindow (mw);
 
+#ifndef HAVE_WAYLAND
   meta_window_actor_detach (self);
 
   /*
@@ -286,6 +308,7 @@ window_decorated_notify (MetaWindow *mw,
       meta_error_trap_pop (display);
       priv->damage = None;
     }
+#endif
 
   g_free (priv->desc);
   priv->desc = NULL;
@@ -306,6 +329,21 @@ window_appears_focused_notify (MetaWindow *mw,
   clutter_actor_queue_redraw (CLUTTER_ACTOR (data));
 }
 
+#ifdef HAVE_WAYLAND
+static void
+cogl_texture_notify (ClutterWaylandSurface *surface,
+                     GParamSpec             *arg1,
+                     MetaWindowActor        *self)
+{
+  CoglHandle tex = clutter_wayland_surface_get_cogl_texture (surface);
+  int width = cogl_texture_get_width (tex);
+  int height = cogl_texture_get_height (tex);
+  meta_window_actor_update_bounding_region_and_borders (self,
+                                                        width,
+                                                        height);
+}
+#endif
+
 static void
 meta_window_actor_constructed (GObject *object)
 {
@@ -318,8 +356,10 @@ meta_window_actor_constructed (GObject *object)
   Display                *xdisplay = meta_display_get_xdisplay (display);
   XRenderPictFormat      *format;
 
+#ifndef HAVE_WAYLAND
   priv->damage = XDamageCreate (xdisplay, xwindow,
                                 XDamageReportBoundingBox);
+#endif
 
   format = XRenderFindVisualFormat (xdisplay, window->xvisual);
 
@@ -328,7 +368,12 @@ meta_window_actor_constructed (GObject *object)
 
   if (!priv->actor)
     {
-      priv->actor = meta_shaped_texture_new ();
+      if (window->client_type == META_WINDOW_CLIENT_TYPE_X11)
+        priv->actor = meta_shaped_texture_new_with_xwindow (xwindow);
+#ifdef HAVE_WAYLAND
+      else
+        priv->actor = meta_shaped_texture_new_with_surface (window->surface);
+#endif
 
       clutter_container_add_actor (CLUTTER_CONTAINER (self), priv->actor);
 
@@ -345,6 +390,10 @@ meta_window_actor_constructed (GObject *object)
                         G_CALLBACK (window_decorated_notify), self);
       g_signal_connect (window, "notify::appears-focused",
                         G_CALLBACK (window_appears_focused_notify), self);
+#ifdef HAVE_WAYLAND
+      g_signal_connect (priv->actor, "notify::cogl-texture",
+                        G_CALLBACK (cogl_texture_notify), self);
+#endif
     }
   else
     {
@@ -365,8 +414,10 @@ meta_window_actor_dispose (GObject *object)
   MetaWindowActor        *self = META_WINDOW_ACTOR (object);
   MetaWindowActorPrivate *priv = self->priv;
   MetaScreen             *screen;
+#ifndef HAVE_WAYLAND
   MetaDisplay            *display;
   Display                *xdisplay;
+#endif
   MetaCompScreen         *info;
 
   if (priv->disposed)
@@ -375,11 +426,13 @@ meta_window_actor_dispose (GObject *object)
   priv->disposed = TRUE;
 
   screen   = priv->screen;
+  info     = meta_screen_get_compositor_data (screen);
+#ifndef HAVE_WAYLAND
   display  = meta_screen_get_display (screen);
   xdisplay = meta_display_get_xdisplay (display);
-  info     = meta_screen_get_compositor_data (screen);
 
   meta_window_actor_detach (self);
+#endif
 
   meta_window_actor_clear_shape_region (self);
   meta_window_actor_clear_bounding_region (self);
@@ -409,6 +462,7 @@ meta_window_actor_dispose (GObject *object)
       priv->shadow_shape = NULL;
     }
 
+#ifndef HAVE_WAYLAND
   if (priv->damage != None)
     {
       meta_error_trap_push (display);
@@ -417,6 +471,7 @@ meta_window_actor_dispose (GObject *object)
 
       priv->damage = None;
     }
+#endif
 
   info->windows = g_list_remove (info->windows, (gconstpointer) self);
 
@@ -913,6 +968,7 @@ meta_window_actor_freeze (MetaWindowActor *self)
   self->priv->freeze_count++;
 }
 
+#ifndef HAVE_WAYLAND
 static void
 meta_window_actor_damage_all (MetaWindowActor *self)
 {
@@ -934,6 +990,7 @@ meta_window_actor_damage_all (MetaWindowActor *self)
 
   priv->needs_damage_all = FALSE;
 }
+#endif
 
 static void
 meta_window_actor_thaw (MetaWindowActor *self)
@@ -950,12 +1007,14 @@ meta_window_actor_thaw (MetaWindowActor *self)
   if (self->priv->freeze_count)
     return;
 
+#ifndef HAVE_WAYLAND
   /* Since we ignore damage events while a window is frozen for certain effects
    * we may need to issue an update_area() covering the whole pixmap if we
    * don't know what real damage has happened. */
 
   if (self->priv->needs_damage_all)
     meta_window_actor_damage_all (self);
+#endif
 }
 
 gboolean
@@ -968,6 +1027,7 @@ meta_window_actor_effect_in_progress (MetaWindowActor *self)
 	  self->priv->destroy_in_progress);
 }
 
+#ifndef HAVE_WAYLAND
 static void
 meta_window_actor_queue_create_pixmap (MetaWindowActor *self)
 {
@@ -988,6 +1048,7 @@ meta_window_actor_queue_create_pixmap (MetaWindowActor *self)
    */
   clutter_actor_queue_redraw (priv->actor);
 }
+#endif
 
 static gboolean
 is_freeze_thaw_effect (gulong event)
@@ -1070,11 +1131,13 @@ meta_window_actor_after_effects (MetaWindowActor *self)
   meta_window_actor_sync_visibility (self);
   meta_window_actor_sync_actor_position (self);
 
+#ifndef HAVE_WAYLAND
   if (!meta_window_is_mapped (priv->window))
     meta_window_actor_detach (self);
 
   if (priv->needs_pixmap)
     clutter_actor_queue_redraw (priv->actor);
+#endif
 }
 
 void
@@ -1149,6 +1212,7 @@ meta_window_actor_effect_completed (MetaWindowActor *self,
     meta_window_actor_after_effects (self);
 }
 
+#ifndef HAVE_WAYLAND
 /* Called to drop our reference to a window backing pixmap that we
  * previously obtained with XCompositeNameWindowPixmap. We do this
  * when the window is unmapped or when we want to update to a new
@@ -1178,6 +1242,7 @@ meta_window_actor_detach (MetaWindowActor *self)
 
   meta_window_actor_queue_create_pixmap (self);
 }
+#endif /* HAVE_WAYLAND */
 
 gboolean
 meta_window_actor_should_unredirect (MetaWindowActor *self)
@@ -1215,6 +1280,7 @@ meta_window_actor_should_unredirect (MetaWindowActor *self)
   return FALSE;
 }
 
+#ifndef HAVE_WAYLAND
 void
 meta_window_actor_set_redirected (MetaWindowActor *self, gboolean state)
 {
@@ -1240,6 +1306,7 @@ meta_window_actor_set_redirected (MetaWindowActor *self, gboolean state)
       self->priv->unredirected = TRUE;
     }
 }
+#endif
 
 void
 meta_window_actor_destroy (MetaWindowActor *self)
@@ -1299,6 +1366,7 @@ meta_window_actor_sync_actor_position (MetaWindowActor *self)
 
   meta_window_get_input_rect (priv->window, &window_rect);
 
+#ifndef HAVE_WAYLAND
   if (priv->last_width != window_rect.width ||
       priv->last_height != window_rect.height)
     {
@@ -1308,6 +1376,7 @@ meta_window_actor_sync_actor_position (MetaWindowActor *self)
       priv->last_width = window_rect.width;
       priv->last_height = window_rect.height;
     }
+#endif
 
   if (meta_window_actor_effect_in_progress (self))
     return;
@@ -1468,17 +1537,30 @@ meta_window_actor_new (MetaWindow *window)
   MetaScreen	 	 *screen = meta_window_get_screen (window);
   MetaCompScreen         *info = meta_screen_get_compositor_data (screen);
   MetaWindowActor        *self;
+#ifndef HAVE_WAYLAND
   MetaWindowActorPrivate *priv;
+#endif
   MetaFrame		 *frame;
-  Window		  top_window;
+  Window		  top_window = None;
 
-  frame = meta_window_get_frame (window);
-  if (frame)
-    top_window = meta_frame_get_xwindow (frame);
+  if (window->client_type == META_WINDOW_CLIENT_TYPE_X11)
+    {
+      frame = meta_window_get_frame (window);
+      if (frame)
+        top_window = meta_frame_get_xwindow (frame);
+      else
+        top_window = meta_window_get_xwindow (window);
+
+      meta_verbose ("add window: Meta %p, xwin 0x%x\n", window, (guint)top_window);
+    }
+#ifdef HAVE_WAYLAND
   else
-    top_window = meta_window_get_xwindow (window);
-
-  meta_verbose ("add window: Meta %p, xwin 0x%x\n", window, (guint)top_window);
+    {
+      meta_verbose ("add window: Meta %p, wayland surface %p\n",
+                    window, window->surface);
+      top_window = None;
+    }
+#endif
 
   self = g_object_new (META_TYPE_WINDOW_ACTOR,
                        "meta-window",         window,
@@ -1486,6 +1568,7 @@ meta_window_actor_new (MetaWindow *window)
                        "meta-screen",         screen,
                        NULL);
 
+#ifndef HAVE_WAYLAND
   priv = self->priv;
 
   priv->last_width = -1;
@@ -1494,6 +1577,7 @@ meta_window_actor_new (MetaWindow *window)
   priv->mapped = meta_window_toplevel_is_mapped (priv->window);
   if (priv->mapped)
     meta_window_actor_queue_create_pixmap (self);
+#endif
 
   meta_window_actor_sync_actor_position (self);
 
@@ -1521,7 +1605,9 @@ meta_window_actor_mapped (MetaWindowActor *self)
 
   priv->mapped = TRUE;
 
+#ifndef HAVE_WAYLAND
   meta_window_actor_queue_create_pixmap (self);
+#endif
 }
 
 void
@@ -1536,8 +1622,10 @@ meta_window_actor_unmapped (MetaWindowActor *self)
   if (meta_window_actor_effect_in_progress (self))
     return;
 
+#ifndef HAVE_WAYLAND
   meta_window_actor_detach (self);
   priv->needs_pixmap = FALSE;
+#endif
 }
 
 static void
@@ -1667,7 +1755,12 @@ meta_window_actor_get_obscured_region (MetaWindowActor *self)
 {
   MetaWindowActorPrivate *priv = self->priv;
 
-  if (!priv->argb32 && priv->opacity == 0xff && priv->back_pixmap)
+  if (!priv->argb32 && priv->opacity == 0xff
+#ifndef HAVE_WAYLAND
+      && priv->back_pixmap)
+#else
+      )
+#endif
     {
       if (priv->shape_region)
         return priv->shape_region;
@@ -1768,6 +1861,10 @@ meta_window_actor_reset_visible_regions (MetaWindowActor *self)
   meta_window_actor_clear_shadow_clip (self);
 }
 
+/* When running as a wayland compositor we don't make requests for
+ * replacement pixmaps when resizing windows, we will instead be
+ * asked to attach replacement buffers by the clients. */
+#ifndef HAVE_WAYLAND
 static void
 check_needs_pixmap (MetaWindowActor *self)
 {
@@ -1853,6 +1950,7 @@ check_needs_pixmap (MetaWindowActor *self)
  out:
   meta_error_trap_pop (display);
 }
+#endif
 
 static void
 check_needs_shadow (MetaWindowActor *self)
@@ -1933,6 +2031,7 @@ is_frozen (MetaWindowActor *self)
   return self->priv->freeze_count ? TRUE : FALSE;
 }
 
+#ifndef HAVE_WAYLAND
 void
 meta_window_actor_process_damage (MetaWindowActor    *self,
                                   XDamageNotifyEvent *event)
@@ -1974,6 +2073,7 @@ meta_window_actor_process_damage (MetaWindowActor    *self,
                                    event->area.width,
                                    event->area.height);
 }
+#endif
 
 void
 meta_window_actor_sync_visibility (MetaWindowActor *self)
@@ -2217,10 +2317,12 @@ meta_window_actor_update_shape (MetaWindowActor *self)
 void
 meta_window_actor_pre_paint (MetaWindowActor *self)
 {
+#ifndef HAVE_WAYLAND
   MetaWindowActorPrivate *priv = self->priv;
   MetaScreen          *screen   = priv->screen;
   MetaDisplay         *display  = meta_screen_get_display (screen);
   Display             *xdisplay = meta_display_get_xdisplay (display);
+#endif
 
   if (is_frozen (self))
     {
@@ -2229,6 +2331,7 @@ meta_window_actor_pre_paint (MetaWindowActor *self)
       return;
     }
 
+#ifndef HAVE_WAYLAND
   if (priv->unredirected)
     {
       /* Nothing to do here until/if the window gets redirected again */
@@ -2265,6 +2368,7 @@ meta_window_actor_pre_paint (MetaWindowActor *self)
     }
 
   check_needs_pixmap (self);
+#endif
   check_needs_reshape (self);
   check_needs_shadow (self);
 }
@@ -2301,3 +2405,11 @@ meta_window_actor_update_opacity (MetaWindowActor *self)
   self->priv->opacity = opacity;
   clutter_actor_set_opacity (self->priv->actor, opacity);
 }
+
+#ifdef HAVE_WAYLAND
+ClutterActor *
+meta_window_actor_get_shaped_texture (MetaWindowActor *self)
+{
+  return self->priv->actor;
+}
+#endif

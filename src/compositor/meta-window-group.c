@@ -11,6 +11,7 @@
 #include "meta-window-actor-private.h"
 #include "meta-window-group.h"
 #include "meta-background-actor-private.h"
+#include "window-private.h"
 
 struct _MetaWindowGroupClass
 {
@@ -107,8 +108,10 @@ meta_window_group_paint (ClutterActor *actor)
   cairo_region_t *visible_region;
   cairo_region_t *unredirected_window_region = NULL;
   ClutterActor *stage;
-  cairo_rectangle_int_t visible_rect, unredirected_rect;
+  cairo_rectangle_int_t visible_rect;
   GList *children, *l;
+#ifndef HAVE_WAYLAND
+  cairo_rectangle_int_t unredirected_rect;
 
   MetaWindowGroup *window_group = META_WINDOW_GROUP (actor);
   MetaCompScreen *info = meta_screen_get_compositor_data (window_group->screen);
@@ -117,6 +120,7 @@ meta_window_group_paint (ClutterActor *actor)
       meta_window_actor_get_shape_bounds (META_WINDOW_ACTOR (info->unredirected_window), &unredirected_rect);
       unredirected_window_region = cairo_region_create_rectangle (&unredirected_rect);
     }
+#endif
 
   /* We walk the list from top to bottom (opposite of painting order),
    * and subtract the opaque area of each window out of the visible
@@ -166,6 +170,7 @@ meta_window_group_paint (ClutterActor *actor)
 
       if (META_IS_WINDOW_ACTOR (l->data))
         {
+          MetaWindow *meta_window;
           MetaWindowActor *window_actor = l->data;
           int x, y;
 
@@ -177,7 +182,13 @@ meta_window_group_paint (ClutterActor *actor)
 
           meta_window_actor_set_visible_region (window_actor, visible_region);
 
-          if (clutter_actor_get_paint_opacity (CLUTTER_ACTOR (window_actor)) == 0xff)
+          /* Currently wayland clients have no way to report opaque
+           * window regions so for now we assume that all wayland
+           * clients are transparent... */
+          meta_window = meta_window_actor_get_meta_window (window_actor);
+
+          if (meta_window->client_type != META_WINDOW_CLIENT_TYPE_WAYLAND &&
+              clutter_actor_get_paint_opacity (CLUTTER_ACTOR (window_actor)) == 0xff)
             {
               cairo_region_t *obscured_region = meta_window_actor_get_obscured_region (window_actor);
               if (obscured_region)

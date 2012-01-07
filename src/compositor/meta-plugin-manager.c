@@ -477,8 +477,10 @@ meta_plugin_manager_xevent_filter (MetaPluginManager *plugin_mgr,
       l = l->next;
     }
 
+#ifndef HAVE_WAYLAND
   if (!have_plugin_xevent_func)
     return clutter_x11_handle_event (xev) != CLUTTER_X11_FILTER_CONTINUE;
+#endif
 
   return FALSE;
 }

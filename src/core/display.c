@@ -397,8 +397,14 @@ enable_compositor (MetaDisplay *display,
       meta_compositor_manage_screen (screen->display->compositor,
 				     screen);
 
+      /* Instead of explicitly enumerating all windows during
+       * initialization, when we run as a wayland compositor we can
+       * rely on xwayland notifying us of all top level windows so
+       * we start compositing them when we get those notifications. */
+#ifndef HAVE_WAYLAND
       if (composite_windows)
         meta_screen_composite_all_windows (screen);
+#endif
     }
 }
 
@@ -841,14 +847,29 @@ meta_display_open (void)
   enable_compositor (the_display, FALSE);
    
   meta_display_grab (the_display);
-  
+
   /* Now manage all existing windows */
   tmp = the_display->screens;
   while (tmp != NULL)
     {
       MetaScreen *screen = tmp->data;
-	
+
+#ifndef HAVE_WAYLAND
       meta_screen_manage_all_windows (screen);
+#else
+      /* Instead of explicitly enumerating all windows during
+       * initialization, when we run as a wayland compositor we can rely on
+       * xwayland notifying us of all top level windows so we create
+       * MetaWindows when we get those notifications.
+       *
+       * We still want a guard window so we can avoid
+       * unmapping/withdrawing minimized windows for live
+       * thumbnails...
+       */
+      if (screen->guard_window == None)
+        screen->guard_window =
+          meta_screen_create_guard_window (screen->display->xdisplay, screen);
+#endif
 
       tmp = tmp->next;
     }
@@ -2369,9 +2390,11 @@ event_callback (XEvent   *event,
 	      screen->xscreen->height  = event->xconfigure.height;
 #endif
 	      
+#ifndef HAVE_WAYLAND
 	      meta_screen_resize (screen, 
 				  event->xconfigure.width,
 				  event->xconfigure.height);
+#endif
 	    }
 	}
       break;

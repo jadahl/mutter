@@ -40,6 +40,9 @@
 #include "xprops.h"
 #include <meta/compositor.h>
 #include "mutter-enum-types.h"
+#ifdef HAVE_WAYLAND
+#include "meta-wayland-private.h"
+#endif
 
 #include <X11/extensions/Xinerama.h>
 
@@ -574,8 +577,8 @@ reload_monitor_infos (MetaScreen *screen)
  * that compositor code may provide live previews of them.
  * Instead of being unmapped/withdrawn, they get pushed underneath
  * the guard window. */
-static Window
-create_guard_window (Display *xdisplay, MetaScreen *screen)
+Window
+meta_screen_create_guard_window (Display *xdisplay, MetaScreen *screen)
 {
   XSetWindowAttributes attributes;
   Window guard_window;
@@ -629,6 +632,9 @@ meta_screen_new (MetaDisplay *display,
   char buf[128];
   guint32 manager_timestamp;
   gulong current_workspace;
+#ifdef HAVE_WAYLAND
+  MetaWaylandCompositor *compositor;
+#endif
   
   replace_current_wm = meta_get_replace_current_wm ();
   
@@ -764,8 +770,14 @@ meta_screen_new (MetaDisplay *display,
   screen->xscreen = ScreenOfDisplay (xdisplay, number);
   screen->xroot = xroot;
   screen->rect.x = screen->rect.y = 0;
+#ifdef HAVE_WAYLAND
+  compositor = meta_wayland_compositor_get_default ();
+  screen->rect.width = clutter_actor_get_width (compositor->stage);
+  screen->rect.height = clutter_actor_get_height (compositor->stage);
+#else
   screen->rect.width = WidthOfScreen (screen->xscreen);
   screen->rect.height = HeightOfScreen (screen->xscreen);
+#endif
   screen->current_cursor = -1; /* invalid/unset */
   screen->default_xvisual = DefaultVisualOfScreen (screen->xscreen);
   screen->default_depth = DefaultDepthOfScreen (screen->xscreen);
@@ -1008,6 +1020,11 @@ list_windows (MetaScreen *screen)
   return g_list_reverse (result);
 }
 
+/* Instead of explicitly enumerating all windows during
+ * initialization, when we run as a wayland compositor we can rely on
+ * xwayland notifying us of all top level windows so we create
+ * MetaWindows when we get those notifications. */
+#ifndef HAVE_WAYLAND
 void
 meta_screen_manage_all_windows (MetaScreen *screen)
 {
@@ -1017,8 +1034,8 @@ meta_screen_manage_all_windows (MetaScreen *screen)
   meta_display_grab (screen->display);
 
   if (screen->guard_window == None)
-    screen->guard_window = create_guard_window (screen->display->xdisplay,
-                                                screen);
+    screen->guard_window =
+      meta_screen_create_guard_window (screen->display->xdisplay, screen);
 
   windows = list_windows (screen);
 
@@ -1066,6 +1083,7 @@ meta_screen_composite_all_windows (MetaScreen *screen)
   /* initialize the compositor's view of the stacking order */
   meta_stack_tracker_sync_stack (screen->stack_tracker);
 }
+#endif /* HAVE_WAYLAND */
 
 /**
  * meta_screen_for_x_screen:

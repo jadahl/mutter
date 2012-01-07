@@ -11,6 +11,7 @@ INCLUDES=								\
 	-I$(srcdir)/core						\
 	-I$(srcdir)/ui							\
 	-I$(srcdir)/compositor						\
+	-I$(srcdir)/wayland						\
 	-DMUTTER_LIBEXECDIR=\"$(libexecdir)\"				\
 	-DHOST_ALIAS=\"@HOST_ALIAS@\"					\
 	-DMUTTER_LOCALEDIR=\"$(prefix)/@DATADIRNAME@/locale\"		\
@@ -35,6 +36,13 @@ endif
 mutter_built_sources = \
 	mutter-enum-types.h \
 	mutter-enum-types.c
+
+if HAVE_WAYLAND
+mutter_built_sources += \
+	wayland/xserver-protocol.c		\
+	wayland/xserver-server-protocol.h	\
+	wayland/xserver-client-protocol.h
+endif
 
 libmutter_la_SOURCES =				\
 	core/async-getprop.c			\
@@ -156,6 +164,12 @@ libmutter_la_SOURCES =				\
 	meta/preview-widget.h			\
 	ui/preview-widget.c			\
 	$(mutter_built_sources)
+
+if HAVE_WAYLAND
+libmutter_la_SOURCES +=				\
+	wayland/meta-wayland.c			\
+	wayland/meta-wayland-private.h
+endif
 
 libmutter_la_LDFLAGS = -no-undefined
 libmutter_la_LIBADD  = $(MUTTER_LIBS)
@@ -333,3 +347,12 @@ mutter-enum-types.c: stamp-mutter-enum-types.h mutter-enum-types.c.in
 	  $(libmutterinclude_base_headers) ) >> xgen-tetc && \
 	cp xgen-tetc mutter-enum-types.c && \
 	rm -f xgen-tetc
+
+if HAVE_WAYLAND
+wayland/%-protocol.c : @WAYLAND_EXTENSION_PROTOCOLS_DIR@/%.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) code < $< > $@
+wayland/%-server-protocol.h : @WAYLAND_EXTENSION_PROTOCOLS_DIR@/%.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) server-header < $< > $@
+wayland/%-client-protocol.h : @WAYLAND_EXTENSION_PROTOCOLS_DIR@/%.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) client-header < $< > $@
+endif

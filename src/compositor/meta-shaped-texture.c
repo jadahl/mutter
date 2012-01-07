@@ -31,14 +31,22 @@
 #include <meta/meta-shaped-texture.h>
 #include "meta-texture-tower.h"
 #include "meta-texture-rectangle.h"
+#include "meta-wayland-private.h"
 
 #include <clutter/clutter.h>
+#ifdef HAVE_WAYLAND
+#include <clutter/wayland/clutter-wayland-surface.h>
+#endif
 #include <cogl/cogl.h>
 #include <cogl/cogl-texture-pixmap-x11.h>
 #include <gdk/gdk.h> /* for gdk_rectangle_intersect() */
 #include <string.h>
 
 static void meta_shaped_texture_dispose  (GObject    *object);
+#ifdef HAVE_WAYLAND
+static void meta_shaped_texture_notify   (GObject    *object,
+					  GParamSpec *pspec);
+#endif
 
 static void meta_shaped_texture_paint (ClutterActor       *actor);
 static void meta_shaped_texture_pick  (ClutterActor       *actor,
@@ -53,13 +61,24 @@ static void meta_shaped_texture_get_preferred_height (ClutterActor *self,
                                                       gfloat        for_width,
                                                       gfloat       *min_height_p,
                                                       gfloat       *natural_height_p);
+#ifdef HAVE_WAYLAND
+static void meta_shaped_texture_queue_damage_redraw (ClutterWaylandSurface *surface,
+                                                     int                    x,
+                                                     int                    y,
+                                                     int                    width,
+                                                     int                    height);
+#endif
 
 static void meta_shaped_texture_dirty_mask (MetaShapedTexture *stex);
 
 static gboolean meta_shaped_texture_get_paint_volume (ClutterActor *self, ClutterPaintVolume *volume);
 
 G_DEFINE_TYPE (MetaShapedTexture, meta_shaped_texture,
+#ifdef HAVE_WAYLAND
+               CLUTTER_WAYLAND_TYPE_SURFACE);
+#else
                CLUTTER_TYPE_ACTOR);
+#endif
 
 #define META_SHAPED_TEXTURE_GET_PRIVATE(obj) \
   (G_TYPE_INSTANCE_GET_PRIVATE ((obj), META_TYPE_SHAPED_TEXTURE, \
@@ -91,14 +110,24 @@ meta_shaped_texture_class_init (MetaShapedTextureClass *klass)
 {
   GObjectClass *gobject_class = (GObjectClass *) klass;
   ClutterActorClass *actor_class = (ClutterActorClass *) klass;
+#ifdef HAVE_WAYLAND
+  ClutterWaylandSurfaceClass *wayland_surface_class = (ClutterWaylandSurfaceClass *) klass;
+#endif
 
   gobject_class->dispose = meta_shaped_texture_dispose;
+#ifdef HAVE_WAYLAND
+  gobject_class->notify = meta_shaped_texture_notify;
+#endif
 
   actor_class->get_preferred_width = meta_shaped_texture_get_preferred_width;
   actor_class->get_preferred_height = meta_shaped_texture_get_preferred_height;
   actor_class->paint = meta_shaped_texture_paint;
   actor_class->pick = meta_shaped_texture_pick;
   actor_class->get_paint_volume = meta_shaped_texture_get_paint_volume;
+
+#ifdef HAVE_WAYLAND
+  wayland_surface_class->queue_damage_redraw = meta_shaped_texture_queue_damage_redraw;
+#endif
 
   g_type_class_add_private (klass, sizeof (MetaShapedTexturePrivate));
 }
@@ -153,6 +182,74 @@ meta_shaped_texture_dispose (GObject *object)
 
   G_OBJECT_CLASS (meta_shaped_texture_parent_class)->dispose (object);
 }
+
+static void
+set_cogl_texture (MetaShapedTexture *stex,
+                  CoglHandle         cogl_tex)
+{
+  MetaShapedTexturePrivate *priv;
+  guint width, height;
+
+  g_return_if_fail (META_IS_SHAPED_TEXTURE (stex));
+
+  priv = stex->priv;
+
+  if (priv->texture != COGL_INVALID_HANDLE)
+    cogl_handle_unref (priv->texture);
+
+  priv->texture = cogl_tex;
+
+  if (priv->material != COGL_INVALID_HANDLE)
+    cogl_material_set_layer (priv->material, 0, cogl_tex);
+
+  if (priv->material_unshaped != COGL_INVALID_HANDLE)
+    cogl_material_set_layer (priv->material_unshaped, 0, cogl_tex);
+
+  if (cogl_tex != COGL_INVALID_HANDLE)
+    {
+      width = cogl_texture_get_width (cogl_tex);
+      height = cogl_texture_get_height (cogl_tex);
+
+      if (width != priv->tex_width ||
+          height != priv->tex_height)
+        {
+          priv->tex_width = width;
+          priv->tex_height = height;
+
+          clutter_actor_queue_relayout (CLUTTER_ACTOR (stex));
+        }
+    }
+  else
+    {
+      /* size changed to 0 going to an invalid handle */
+      priv->tex_width = 0;
+      priv->tex_height = 0;
+      clutter_actor_queue_relayout (CLUTTER_ACTOR (stex));
+    }
+
+  clutter_actor_queue_redraw (CLUTTER_ACTOR (stex));
+}
+
+#ifdef HAVE_WAYLAND
+static void
+meta_shaped_texture_notify (GObject    *object,
+			    GParamSpec *pspec)
+{
+  if (G_OBJECT_CLASS (meta_shaped_texture_parent_class)->notify)
+    G_OBJECT_CLASS (meta_shaped_texture_parent_class)->notify (object, pspec);
+
+  if (strcmp (pspec->name, "cogl-texture") == 0)
+    {
+      MetaShapedTexture *stex = (MetaShapedTexture *) object;
+      MetaShapedTexturePrivate *priv = stex->priv;
+      CoglHandle texture =
+        clutter_wayland_surface_get_cogl_texture (CLUTTER_WAYLAND_SURFACE (stex));
+      set_cogl_texture (stex, cogl_handle_ref (texture));
+      if (priv->create_mipmaps)
+        meta_texture_tower_set_base_texture (priv->paint_tower, texture);
+    }
+}
+#endif
 
 static void
 meta_shaped_texture_dirty_mask (MetaShapedTexture *stex)
@@ -556,13 +653,69 @@ meta_shaped_texture_get_paint_volume (ClutterActor *self,
   return clutter_paint_volume_set_from_allocation (volume, self);
 }
 
+#ifdef HAVE_WAYLAND
+void
+meta_shaped_texture_queue_damage_redraw (ClutterWaylandSurface *surface,
+                                         int                    x,
+                                         int                    y,
+                                         int                    width,
+                                         int                    height)
+{
+  MetaShapedTexture *stex = (MetaShapedTexture *) surface;
+  MetaShapedTexturePrivate *priv = stex->priv;
+
+  CLUTTER_WAYLAND_SURFACE_CLASS (meta_shaped_texture_parent_class)->queue_damage_redraw (surface,
+                                                                                         x, y, width, height);
+
+  meta_texture_tower_update_area (priv->paint_tower, x, y, width, height);
+}
+
 ClutterActor *
-meta_shaped_texture_new (void)
+meta_shaped_texture_new_with_surface (MetaWaylandSurface *surface)
+{
+  if (surface)
+    {
+      ClutterActor *actor =
+        g_object_new (META_TYPE_SHAPED_TEXTURE,
+                      "surface", &surface->wayland_surface, NULL);
+
+      /* XXX: This is a bit messy but meta-wayland.c wants a reference
+       * to the corresponding surface actor so that it can pass on
+       * damage events.
+       *
+       * TODO: find a neater way.
+       */
+      surface->actor = actor;
+
+      if (surface->buffer)
+        {
+          clutter_wayland_surface_attach_buffer (CLUTTER_WAYLAND_SURFACE (surface->actor),
+                                                 surface->buffer->wayland_buffer,
+                                                 NULL);
+        }
+      return actor;
+    }
+  else
+    return g_object_new (META_TYPE_SHAPED_TEXTURE, NULL);
+}
+
+ClutterActor *
+meta_shaped_texture_new_with_xwindow (Window xwindow)
+{
+  MetaWaylandSurface *surface = meta_wayland_lookup_surface_for_xid (xwindow);
+  return meta_shaped_texture_new_with_surface (surface);
+}
+
+#else /* HAVE_WAYLAND */
+
+ClutterActor *
+meta_shaped_texture_new_with_xwindow (Window xwindow)
 {
   ClutterActor *self = g_object_new (META_TYPE_SHAPED_TEXTURE, NULL);
-
   return self;
 }
+
+#endif /* HAVE_WAYLAND */
 
 void
 meta_shaped_texture_set_create_mipmaps (MetaShapedTexture *stex,
@@ -632,53 +785,6 @@ meta_shaped_texture_update_area (MetaShapedTexture *stex,
   meta_texture_tower_update_area (priv->paint_tower, x, y, width, height);
 
   clutter_actor_queue_redraw_with_clip (CLUTTER_ACTOR (stex), &clip);
-}
-
-static void
-set_cogl_texture (MetaShapedTexture *stex,
-                  CoglHandle         cogl_tex)
-{
-  MetaShapedTexturePrivate *priv;
-  guint width, height;
-
-  g_return_if_fail (META_IS_SHAPED_TEXTURE (stex));
-
-  priv = stex->priv;
-
-  if (priv->texture != COGL_INVALID_HANDLE)
-    cogl_handle_unref (priv->texture);
-
-  priv->texture = cogl_tex;
-
-  if (priv->material != COGL_INVALID_HANDLE)
-    cogl_material_set_layer (priv->material, 0, cogl_tex);
-
-  if (priv->material_unshaped != COGL_INVALID_HANDLE)
-    cogl_material_set_layer (priv->material_unshaped, 0, cogl_tex);
-
-  if (cogl_tex != COGL_INVALID_HANDLE)
-    {
-      width = cogl_texture_get_width (cogl_tex);
-      height = cogl_texture_get_height (cogl_tex);
-
-      if (width != priv->tex_width ||
-          height != priv->tex_height)
-        {
-          priv->tex_width = width;
-          priv->tex_height = height;
-
-          clutter_actor_queue_relayout (CLUTTER_ACTOR (stex));
-        }
-    }
-  else
-    {
-      /* size changed to 0 going to an invalid handle */
-      priv->tex_width = 0;
-      priv->tex_height = 0;
-      clutter_actor_queue_relayout (CLUTTER_ACTOR (stex));
-    }
-
-  clutter_actor_queue_redraw (CLUTTER_ACTOR (stex));
 }
 
 /**

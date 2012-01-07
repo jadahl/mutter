@@ -54,6 +54,7 @@
 #include "session.h"
 #include <meta/prefs.h>
 #include <meta/compositor.h>
+#include "meta-wayland-private.h"
 
 #include <glib-object.h>
 #include <gdk/gdkx.h>
@@ -255,6 +256,8 @@ meta_get_option_context (void)
   return ctx;
 }
 
+#ifndef HAVE_WAYLAND
+
 /* Mutter is responsible for pulling events off the X queue, so Clutter
  * doesn't need (and shouldn't) run its normal event source which polls
  * the X fd, but we do have to deal with dispatching events that accumulate
@@ -337,6 +340,7 @@ meta_select_display (gchar *display_name)
   /* DO NOT FREE envVar, putenv() sucks */
   putenv (envVar);
 }
+#endif
 
 static void
 meta_finalize (void)
@@ -346,28 +350,73 @@ meta_finalize (void)
   if (display)
     meta_display_close (display,
                         CurrentTime); /* I doubt correct timestamps matter here */
+
+#ifdef HAVE_WAYLAND
+  meta_wayland_finalize ();
+#endif
 }
 
-static int sigterm_pipe_fds[2] = { -1, -1 };
+static int signal_pipe_fds[2] = { -1, -1 };
 
 static void
-sigterm_handler (int signum)
+signal_handler (int signum)
 {
-  if (sigterm_pipe_fds[1] >= 0)
+  if (signal_pipe_fds[1] >= 0)
     {
-      int G_GNUC_UNUSED dummy;
-
-      dummy = write (sigterm_pipe_fds[1], "", 1);
-      close (sigterm_pipe_fds[1]);
-      sigterm_pipe_fds[1] = -1;
+      switch (signum)
+        {
+        case SIGTERM:
+          write (signal_pipe_fds[1], "T", 1);
+          break;
+        case SIGCHLD:
+          write (signal_pipe_fds[1], "C", 1);
+          break;
+        default:
+          break;
+        }
     }
 }
 
 static gboolean
-on_sigterm (void)
+on_signal (GIOChannel *source,
+           GIOCondition condition,
+           void *data)
 {
-  meta_quit (META_EXIT_SUCCESS);
-  return FALSE;
+  char signal;
+  int count;
+
+  for (;;)
+    {
+      count = read (signal_pipe_fds[0], &signal, 1);
+      if (count == EINTR)
+        continue;
+      if (count < 0)
+        {
+          const char *msg = strerror (errno);
+          g_warning ("Error handling signal: %s", msg);
+        }
+      if (count != 1)
+        {
+          g_warning ("Unexpectedly failed to read byte from signal pipe\n");
+          return TRUE;
+        }
+      break;
+    }
+  switch (signal)
+    {
+    case 'T': /* SIGTERM */
+      meta_quit (META_EXIT_SUCCESS);
+      break;
+#ifdef HAVE_WAYLAND
+    case 'C': /* SIGCHLD */
+          meta_wayland_handle_sig_child ();
+      break;
+#endif
+    default:
+      g_warning ("Spurious character '%c' read from signal pipe", signal);
+    }
+
+  return TRUE;
 }
 
 /**
@@ -398,20 +447,25 @@ meta_init (void)
                 g_strerror (errno));
 #endif
 
-  if (pipe (sigterm_pipe_fds) != 0)
-    g_printerr ("Failed to create SIGTERM pipe: %s\n",
+  if (pipe (signal_pipe_fds) != 0)
+    g_printerr ("Failed to create signal pipe: %s\n",
                 g_strerror (errno));
 
-  channel = g_io_channel_unix_new (sigterm_pipe_fds[0]);
+  channel = g_io_channel_unix_new (signal_pipe_fds[0]);
   g_io_channel_set_flags (channel, G_IO_FLAG_NONBLOCK, NULL);
-  g_io_add_watch (channel, G_IO_IN, (GIOFunc) on_sigterm, NULL);
+  g_io_add_watch (channel, G_IO_IN, (GIOFunc) on_signal, NULL);
   g_io_channel_set_close_on_unref (channel, TRUE);
   g_io_channel_unref (channel);
 
-  act.sa_handler = &sigterm_handler;
+  act.sa_handler = &signal_handler;
   if (sigaction (SIGTERM, &act, NULL) < 0)
     g_printerr ("Failed to register SIGTERM handler: %s\n",
 		g_strerror (errno));
+#ifdef HAVE_WAYLAND
+  if (sigaction (SIGCHLD, &act, NULL) < 0)
+    g_printerr ("Failed to register SIGCHLD handler: %s\n",
+		g_strerror (errno));
+#endif
 
   if (g_getenv ("MUTTER_VERBOSE"))
     meta_set_verbose (TRUE);
@@ -429,9 +483,15 @@ meta_init (void)
   g_irepository_prepend_search_path (MUTTER_PKGLIBDIR);
 #endif
 
-  meta_set_syncing (opt_sync || (g_getenv ("MUTTER_SYNC") != NULL));
-
+#ifdef HAVE_WAYLAND
+  /* NB: When running as a hybrid wayland compositor we run our own headless X
+   * server so the user can't control the X display to connect too. */
+  meta_wayland_init ();
+#else
   meta_select_display (opt_display_name);
+#endif
+
+  meta_set_syncing (opt_sync || (g_getenv ("MUTTER_SYNC") != NULL));
   
   if (opt_replace_wm)
     meta_set_replace_current_wm (TRUE);
@@ -443,10 +503,16 @@ meta_init (void)
   
   meta_ui_init ();
 
+  /* If we are running with wayland then we don't wait until we have
+   * an X connection before initializing clutter we instead initialize
+   * it earlier since we need to initialize the GL driver so the driver
+   * can register any needed wayland extensions. */
+#ifndef HAVE_WAYLAND
   /*
    * Clutter can only be initialized after the UI.
    */
   meta_clutter_init ();
+#endif
 }
 
 /**

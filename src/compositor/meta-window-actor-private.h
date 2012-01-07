@@ -8,6 +8,10 @@
 #include <X11/extensions/Xdamage.h>
 #include <meta/compositor-mutter.h>
 
+#ifdef HAVE_WAYLAND
+#include <wayland-server.h>
+#endif
+
 MetaWindowActor *meta_window_actor_new (MetaWindow *window);
 
 void meta_window_actor_destroy   (MetaWindowActor *self);
@@ -24,14 +28,18 @@ void meta_window_actor_unmaximize (MetaWindowActor *self,
                                    MetaRectangle   *old_rect,
                                    MetaRectangle   *new_rect);
 
+#ifndef HAVE_WAYLAND
 void meta_window_actor_process_damage (MetaWindowActor    *self,
                                        XDamageNotifyEvent *event);
+#endif
 
 void meta_window_actor_pre_paint      (MetaWindowActor    *self);
 
 void meta_window_actor_invalidate_shadow (MetaWindowActor *self);
 
+#ifndef HAVE_WAYLAND
 void meta_window_actor_set_redirected (MetaWindowActor *self, gboolean state);
+#endif
 
 gboolean meta_window_actor_should_unredirect (MetaWindowActor *self);
 
@@ -56,5 +64,9 @@ void meta_window_actor_reset_visible_regions      (MetaWindowActor *self);
 
 void meta_window_actor_effect_completed (MetaWindowActor *actor,
                                          gulong           event);
+
+#ifdef HAVE_WAYLAND
+ClutterActor *meta_window_actor_get_shaped_texture (MetaWindowActor *self);
+#endif
 
 #endif /* META_WINDOW_ACTOR_PRIVATE_H */

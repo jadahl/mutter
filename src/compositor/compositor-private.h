@@ -44,7 +44,9 @@ struct _MetaCompScreen
 
   /* Used for unredirecting fullscreen windows */
   guint                   disable_unredirect_count;
+#ifndef HAVE_WAYLAND
   MetaWindowActor             *unredirected_window;
+#endif
 
   /* Before we create the output window */
   XserverRegion     pending_input_region;
