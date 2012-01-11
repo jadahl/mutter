@@ -285,6 +285,7 @@ meta_wayland_surface_attach_buffer (struct wl_client *wayland_client,
   if (surface->actor)
     {
       surface_actor = CLUTTER_WAYLAND_SURFACE (surface->actor);
+      clutter_actor_set_reactive (surface->actor, TRUE);
       if (!clutter_wayland_surface_attach_buffer (surface_actor, wayland_buffer,
                                                   NULL))
         g_warning ("Failed to attach buffer to ClutterWaylandSurface");
@@ -350,6 +351,16 @@ const struct wl_surface_interface meta_wayland_surface_interface = {
   meta_wayland_surface_frame
 };
 
+/* This should be called whenever the window stacking changes to
+   update the current position on all of the input devices */
+void
+meta_wayland_compositor_repick (MetaWaylandCompositor *compositor)
+{
+  meta_wayland_input_device_repick (compositor->input_device,
+                                    get_time (),
+                                    NULL);
+}
+
 static void
 surface_actor_destroyed_cb (void *user_data,
                             GObject *old_object)
@@ -383,6 +394,12 @@ meta_wayland_surface_free (MetaWaylandSurface *surface)
     }
 
   g_slice_free (MetaWaylandSurface, surface);
+
+  meta_wayland_compositor_repick (compositor);
+
+  if (compositor->implicit_grab_surface == (struct wl_surface *) surface)
+    compositor->implicit_grab_surface =
+      ((struct wl_input_device *) compositor->input_device)->current;
 }
 
 static void
@@ -1124,6 +1141,105 @@ stage_destroy_cb (void)
   meta_quit (META_EXIT_SUCCESS);
 }
 
+static gboolean
+event_cb (ClutterActor *stage,
+          const ClutterEvent *event,
+          MetaWaylandCompositor *compositor)
+{
+  struct wl_input_device *device =
+    (struct wl_input_device *) compositor->input_device;
+  MetaWaylandSurface *surface;
+  MetaDisplay *display;
+  XMotionEvent xevent;
+
+  meta_wayland_input_device_handle_event (compositor->input_device, event);
+
+  display = meta_get_display ();
+  if (!display)
+    return FALSE;
+
+  /* We want to synthesize X events for mouse motion events so that we
+     don't have to rely on the X server's window position being
+     synched with the surface positoin. See the comment in
+     event_callback() in display.c */
+
+  switch (event->type)
+    {
+    case CLUTTER_BUTTON_PRESS:
+      if (compositor->implicit_grab_surface == NULL)
+        {
+          compositor->implicit_grab_button = event->button.button;
+          compositor->implicit_grab_surface = device->current;
+        }
+      return FALSE;
+
+    case CLUTTER_BUTTON_RELEASE:
+      if (event->type == CLUTTER_BUTTON_RELEASE &&
+          compositor->implicit_grab_surface &&
+          event->button.button == compositor->implicit_grab_button)
+        compositor->implicit_grab_surface = NULL;
+      return FALSE;
+
+    case CLUTTER_MOTION:
+      break;
+
+    default:
+      return FALSE;
+    }
+
+  xevent.type = MotionNotify;
+  xevent.is_hint = NotifyNormal;
+  xevent.same_screen = TRUE;
+  xevent.serial = 0;
+  xevent.send_event = False;
+  xevent.display = display->xdisplay;
+  xevent.root = DefaultRootWindow (display->xdisplay);
+
+  if (compositor->implicit_grab_surface)
+    surface = (MetaWaylandSurface *) compositor->implicit_grab_surface;
+  else
+    surface = (MetaWaylandSurface *) device->current;
+
+  if (surface == (MetaWaylandSurface *) device->current)
+    {
+      xevent.x = device->current_x;
+      xevent.y = device->current_y;
+    }
+  else if (surface)
+    {
+      float ax, ay;
+
+      clutter_actor_transform_stage_point (surface->actor,
+                                           device->x, device->y,
+                                           &ax, &ay);
+      xevent.x = ax;
+      xevent.y = ay;
+    }
+  else
+    {
+      xevent.x = device->x;
+      xevent.y = device->y;
+    }
+
+  if (surface && surface->xid != None)
+    xevent.window = surface->xid;
+  else
+    xevent.window = xevent.root;
+
+  /* Mutter doesn't really know about the sub-windows. This assumes it
+     doesn't care either */
+  xevent.subwindow = xevent.window;
+  xevent.time = event->any.time;
+  xevent.x_root = device->x;
+  xevent.y_root = device->y;
+  /* The Clutter state flags exactly match the X values */
+  xevent.state = clutter_event_get_state (event);
+
+  meta_display_handle_event (display, (XEvent *) &xevent);
+
+  return FALSE;
+}
+
 void
 meta_wayland_init (void)
 {
@@ -1177,6 +1293,12 @@ meta_wayland_init (void)
                           G_CALLBACK (paint_finished_cb), compositor);
   g_signal_connect (compositor->stage, "destroy",
                     G_CALLBACK (stage_destroy_cb), NULL);
+  g_signal_connect (compositor->stage, "event",
+                    G_CALLBACK (event_cb), compositor);
+
+  compositor->input_device =
+    meta_wayland_input_device_new (compositor->wayland_display,
+                                   compositor->stage);
 
   meta_wayland_compositor_create_output (compositor, 0, 0, 1024, 600, 222, 125);
 

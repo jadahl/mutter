@@ -27,6 +27,7 @@
 #include <glib.h>
 
 #include "window-private.h"
+#include "meta-wayland-input-device.h"
 
 typedef struct _MetaWaylandCompositor MetaWaylandCompositor;
 
@@ -120,6 +121,16 @@ struct _MetaWaylandCompositor
   struct wl_client *xwayland_client;
   struct wl_resource *xserver_resource;
   GHashTable *window_surfaces;
+
+  MetaWaylandInputDevice *input_device;
+
+  /* This surface is only used to keep drag of the implicit grab when
+     synthesizing XEvents for Mutter */
+  struct wl_surface *implicit_grab_surface;
+  /* Button that was pressed to initiate an implicit grab. The
+     implicit grab will only be released when this button is
+     released */
+  guint32 implicit_grab_button;
 };
 
 void                    meta_wayland_init                   (void);
@@ -132,5 +143,7 @@ MetaWaylandCompositor  *meta_wayland_compositor_get_default (void);
 void                    meta_wayland_handle_sig_child       (void);
 
 MetaWaylandSurface     *meta_wayland_lookup_surface_for_xid (guint32 xid);
+
+void                    meta_wayland_compositor_repick      (MetaWaylandCompositor *compositor);
 
 #endif /* META_WAYLAND_PRIVATE_H */

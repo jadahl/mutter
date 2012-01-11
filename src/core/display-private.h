@@ -444,4 +444,7 @@ void meta_display_overlay_key_activate (MetaDisplay *display);
 /* In above-tab-keycode.c */
 guint meta_display_get_above_tab_keycode (MetaDisplay *display);
 
+gboolean meta_display_handle_event (MetaDisplay *display,
+                                    XEvent      *event);
+
 #endif
