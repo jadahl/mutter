@@ -38,7 +38,7 @@
 #define MAP_TIMEOUT       250
 #define SWITCH_TIMEOUT    500
 
-#define ACTOR_DATA_KEY "MCCP-Default-actor-data"
+#define ORIG_PARENT_KEY "MCCP-original-parent"
 
 #define META_TYPE_DEFAULT_PLUGIN            (meta_default_plugin_get_type ())
 #define META_DEFAULT_PLUGIN(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), META_TYPE_DEFAULT_PLUGIN, MetaDefaultPlugin))
@@ -65,8 +65,6 @@ struct _MetaDefaultPluginClass
 {
   MetaPluginClass parent_class;
 };
-
-static GQuark actor_data_quark = 0;
 
 static void minimize   (MetaPlugin      *plugin,
                         MetaWindowActor *actor);
@@ -106,37 +104,11 @@ META_PLUGIN_DECLARE(MetaDefaultPlugin, meta_default_plugin);
 struct _MetaDefaultPluginPrivate
 {
   /* Valid only when switch_workspace effect is in progress */
-  ClutterTimeline       *tml_switch_workspace1;
-  ClutterTimeline       *tml_switch_workspace2;
   ClutterActor          *desktop1;
   ClutterActor          *desktop2;
 
   MetaPluginInfo         info;
 };
-
-/*
- * Per actor private data we attach to each actor.
- */
-typedef struct _ActorPrivate
-{
-  ClutterActor *orig_parent;
-
-  ClutterTimeline *tml_minimize;
-  ClutterTimeline *tml_maximize;
-  ClutterTimeline *tml_destroy;
-  ClutterTimeline *tml_map;
-
-  gboolean      is_minimized : 1;
-  gboolean      is_maximized : 1;
-} ActorPrivate;
-
-/* callback data for when animations complete */
-typedef struct
-{
-  ClutterActor *actor;
-  MetaPlugin *plugin;
-} EffectCompleteData;
-
 
 static void
 meta_default_plugin_dispose (GObject *object)
@@ -218,66 +190,35 @@ meta_default_plugin_init (MetaDefaultPlugin *self)
   priv->info.description = "This is an example of a plugin implementation.";
 }
 
-/*
- * Actor private data accessor
- */
 static void
-free_actor_private (gpointer data)
+on_switch_workspace_effect_complete (ClutterActor *actor,
+                                     gpointer      data)
 {
-  if (G_LIKELY (data != NULL))
-    g_slice_free (ActorPrivate, data);
-}
-
-static ActorPrivate *
-get_actor_private (MetaWindowActor *actor)
-{
-  ActorPrivate *priv = g_object_get_qdata (G_OBJECT (actor), actor_data_quark);
-
-  if (G_UNLIKELY (actor_data_quark == 0))
-    actor_data_quark = g_quark_from_static_string (ACTOR_DATA_KEY);
-
-  if (G_UNLIKELY (!priv))
-    {
-      priv = g_slice_new0 (ActorPrivate);
-
-      g_object_set_qdata_full (G_OBJECT (actor),
-                               actor_data_quark, priv,
-                               free_actor_private);
-    }
-
-  return priv;
-}
-
-static void
-on_switch_workspace_effect_complete (ClutterTimeline *timeline, gpointer data)
-{
-  MetaPlugin               *plugin  = META_PLUGIN (data);
+  MetaPlugin *plugin = META_PLUGIN (data);
   MetaDefaultPluginPrivate *priv = META_DEFAULT_PLUGIN (plugin)->priv;
-  MetaScreen *screen = meta_plugin_get_screen (plugin);
-  GList *l = meta_get_window_actors (screen);
+  ClutterActorIter iter;
+  ClutterActor *child;
 
-  while (l)
+  clutter_actor_iter_init (&iter, actor);
+  while (clutter_actor_iter_next (&iter, &child))
     {
-      ClutterActor *a = l->data;
-      MetaWindowActor *window_actor = META_WINDOW_ACTOR (a);
-      ActorPrivate *apriv = get_actor_private (window_actor);
+      ClutterActor *orig_parent = g_object_get_data (G_OBJECT (actor), ORIG_PARENT_KEY);
 
-      if (apriv->orig_parent)
+      if (orig_parent != NULL)
         {
-          clutter_actor_reparent (a, apriv->orig_parent);
-          apriv->orig_parent = NULL;
+          clutter_actor_remove_child (actor, child);
+          clutter_actor_add_child (child, orig_parent);
+          g_object_set_data (G_OBJECT (actor), ORIG_PARENT_KEY, NULL);
         }
-
-      l = l->next;
     }
 
-  clutter_actor_destroy (priv->desktop1);
-  clutter_actor_destroy (priv->desktop2);
+  if (actor == priv->desktop1)
+    priv->desktop1 = NULL;
 
-  priv->tml_switch_workspace1 = NULL;
-  priv->tml_switch_workspace2 = NULL;
-  priv->desktop1 = NULL;
-  priv->desktop2 = NULL;
+  if (actor == priv->desktop2)
+    priv->desktop2 = NULL;
+
+  clutter_actor_destroy (actor);
 
   meta_plugin_switch_workspace_completed (plugin);
 }
@@ -290,11 +231,10 @@ switch_workspace (MetaPlugin *plugin,
   MetaScreen *screen;
   MetaDefaultPluginPrivate *priv = META_DEFAULT_PLUGIN (plugin)->priv;
   GList        *l;
-  ClutterActor *workspace0  = clutter_group_new ();
-  ClutterActor *workspace1  = clutter_group_new ();
+  ClutterActor *workspace0  = clutter_actor_new ();
+  ClutterActor *workspace1  = clutter_actor_new ();
   ClutterActor *stage;
   int           screen_width, screen_height;
-  ClutterAnimation *animation;
 
   screen = meta_plugin_get_screen (plugin);
   stage = meta_get_stage_for_screen (screen);
@@ -312,8 +252,8 @@ switch_workspace (MetaPlugin *plugin,
 
   clutter_actor_set_scale (workspace1, 0.0, 0.0);
 
-  clutter_container_add_actor (CLUTTER_CONTAINER (stage), workspace1);
-  clutter_container_add_actor (CLUTTER_CONTAINER (stage), workspace0);
+  clutter_actor_add_child (stage, workspace1);
+  clutter_actor_add_child (stage, workspace0);
 
   if (from == to)
     {
@@ -326,7 +266,6 @@ switch_workspace (MetaPlugin *plugin,
   while (l)
     {
       MetaWindowActor *window_actor = l->data;
-      ActorPrivate    *apriv	    = get_actor_private (window_actor);
       ClutterActor    *actor	    = CLUTTER_ACTOR (window_actor);
       gint             win_workspace;
 
@@ -334,23 +273,23 @@ switch_workspace (MetaPlugin *plugin,
 
       if (win_workspace == to || win_workspace == from)
         {
-          apriv->orig_parent = clutter_actor_get_parent (actor);
+          ClutterActor *old_parent, *new_parent;
 
-          clutter_actor_reparent (actor,
-				  win_workspace == to ? workspace1 : workspace0);
-          clutter_actor_show_all (actor);
-          clutter_actor_raise_top (actor);
-        }
-      else if (win_workspace < 0)
-        {
-          /* Sticky window */
-          apriv->orig_parent = NULL;
+          old_parent = clutter_actor_get_parent (actor);
+          g_object_set_data_full (G_OBJECT (actor), ORIG_PARENT_KEY,
+                                  g_object_ref (old_parent),
+                                  (GDestroyNotify) g_object_unref);
+
+          clutter_actor_remove_child (old_parent, actor);
+          new_parent = win_workspace == to ? workspace1 : workspace0;
+          clutter_actor_add_child (new_parent, actor);
+          clutter_actor_show (actor);
+          clutter_actor_set_child_above_sibling (new_parent, actor, NULL);
         }
       else
         {
           /* Window on some other desktop */
           clutter_actor_hide (actor);
-          apriv->orig_parent = NULL;
         }
 
       l = l->prev;
@@ -359,23 +298,23 @@ switch_workspace (MetaPlugin *plugin,
   priv->desktop1 = workspace0;
   priv->desktop2 = workspace1;
 
-  animation = clutter_actor_animate (workspace0, CLUTTER_EASE_IN_SINE,
-                                     SWITCH_TIMEOUT,
-                                     "scale-x", 1.0,
-                                     "scale-y", 1.0,
-                                     NULL);
-  priv->tml_switch_workspace1 = clutter_animation_get_timeline (animation);
-  g_signal_connect (priv->tml_switch_workspace1,
-                    "completed",
+  clutter_actor_save_easing_state (workspace0);
+  clutter_actor_set_easing_mode (workspace0, CLUTTER_EASE_IN_SINE);
+  clutter_actor_set_easing_duration (workspace0, SWITCH_TIMEOUT);
+  clutter_actor_set_scale (workspace0, 1.0, 1.0);
+  g_signal_connect (workspace0, "transitions-completed",
                     G_CALLBACK (on_switch_workspace_effect_complete),
                     plugin);
+  clutter_actor_restore_easing_state (workspace0);
 
-  animation = clutter_actor_animate (workspace1, CLUTTER_EASE_IN_SINE,
-                                     SWITCH_TIMEOUT,
-                                     "scale-x", 0.0,
-                                     "scale-y", 0.0,
-                                     NULL);
-  priv->tml_switch_workspace2 = clutter_animation_get_timeline (animation);
+  clutter_actor_save_easing_state (workspace1);
+  clutter_actor_set_easing_mode (workspace1, CLUTTER_EASE_IN_SINE);
+  clutter_actor_set_easing_duration (workspace1, SWITCH_TIMEOUT);
+  clutter_actor_set_scale (workspace1, 0.0, 0.0);
+  g_signal_connect (workspace1, "transitions-completed",
+                    G_CALLBACK (on_switch_workspace_effect_complete),
+                    plugin);
+  clutter_actor_restore_easing_state (workspace1);
 }
 
 
@@ -384,31 +323,21 @@ switch_workspace (MetaPlugin *plugin,
  * calls the manager callback function.
  */
 static void
-on_minimize_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data)
+on_minimize_effect_complete (ClutterActor *actor,
+                             MetaPlugin   *plugin)
 {
-  /*
-   * Must reverse the effect of the effect; must hide it first to ensure
-   * that the restoration will not be visible.
-   */
-  MetaPlugin *plugin = data->plugin;
-  ActorPrivate *apriv;
-  MetaWindowActor *window_actor = META_WINDOW_ACTOR (data->actor);
+  MetaWindowActor *window_actor = META_WINDOW_ACTOR (actor);
 
-  apriv = get_actor_private (META_WINDOW_ACTOR (data->actor));
-  apriv->tml_minimize = NULL;
-
-  clutter_actor_hide (data->actor);
+  clutter_actor_hide (actor);
 
   /* FIXME - we shouldn't assume the original scale, it should be saved
    * at the start of the effect */
-  clutter_actor_set_scale (data->actor, 1.0, 1.0);
-  clutter_actor_move_anchor_point_from_gravity (data->actor,
+  clutter_actor_set_scale (actor, 1.0, 1.0);
+  clutter_actor_move_anchor_point_from_gravity (actor,
                                                 CLUTTER_GRAVITY_NORTH_WEST);
 
   /* Now notify the manager that we are done with this effect */
   meta_plugin_minimize_completed (plugin, window_actor);
-
-  g_free (data);
 }
 
 /*
@@ -434,29 +363,19 @@ minimize (MetaPlugin *plugin, MetaWindowActor *window_actor)
 
   if (type == META_WINDOW_NORMAL)
     {
-      ClutterAnimation *animation;
-      EffectCompleteData *data = g_new0 (EffectCompleteData, 1);
-      ActorPrivate *apriv = get_actor_private (window_actor);
-
-      apriv->is_minimized = TRUE;
-
       clutter_actor_move_anchor_point_from_gravity (actor,
                                                     CLUTTER_GRAVITY_CENTER);
 
-      animation = clutter_actor_animate (actor,
-                                         CLUTTER_EASE_IN_SINE,
-                                         MINIMIZE_TIMEOUT,
-                                         "scale-x", 0.0,
-                                         "scale-y", 0.0,
-                                         "x", (double)icon_geometry.x,
-                                         "y", (double)icon_geometry.y,
-                                         NULL);
-      apriv->tml_minimize = clutter_animation_get_timeline (animation);
-      data->plugin = plugin;
-      data->actor = actor;
-      g_signal_connect (apriv->tml_minimize, "completed",
+      clutter_actor_save_easing_state (actor);
+      clutter_actor_set_easing_mode (actor, CLUTTER_EASE_IN_SINE);
+      clutter_actor_set_easing_duration (actor, MINIMIZE_TIMEOUT);
+      clutter_actor_set_scale (actor, 0.0, 0.0);
+      clutter_actor_set_position (actor, icon_geometry.x, icon_geometry.y);
+      clutter_actor_restore_easing_state (actor);
+
+      g_signal_connect (actor, "transitions-completed",
                         G_CALLBACK (on_minimize_effect_complete),
-                        data);
+                        plugin);
 
     }
   else
@@ -468,26 +387,18 @@ minimize (MetaPlugin *plugin, MetaWindowActor *window_actor)
  * calls the manager callback function.
  */
 static void
-on_maximize_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data)
+on_maximize_effect_complete (ClutterActor *actor,
+                             MetaPlugin   *plugin)
 {
-  /*
-   * Must reverse the effect of the effect.
-   */
-  MetaPlugin *plugin = data->plugin;
-  MetaWindowActor *window_actor = META_WINDOW_ACTOR (data->actor);
-  ActorPrivate *apriv = get_actor_private (window_actor);
-
-  apriv->tml_maximize = NULL;
+  MetaWindowActor *window_actor = META_WINDOW_ACTOR (actor);
 
   /* FIXME - don't assume the original scale was 1.0 */
-  clutter_actor_set_scale (data->actor, 1.0, 1.0);
-  clutter_actor_move_anchor_point_from_gravity (data->actor,
+  clutter_actor_set_scale (actor, 1.0, 1.0);
+  clutter_actor_move_anchor_point_from_gravity (actor,
                                                 CLUTTER_GRAVITY_NORTH_WEST);
 
   /* Now notify the manager that we are done with this effect */
   meta_plugin_maximize_completed (plugin, window_actor);
-
-  g_free (data);
 }
 
 /*
@@ -516,13 +427,8 @@ maximize (MetaPlugin *plugin,
 
   if (type == META_WINDOW_NORMAL)
     {
-      ClutterAnimation *animation;
-      EffectCompleteData *data = g_new0 (EffectCompleteData, 1);
-      ActorPrivate *apriv = get_actor_private (window_actor);
       gfloat width, height;
       gfloat x, y;
-
-      apriv->is_maximized = TRUE;
 
       clutter_actor_get_size (actor, &width, &height);
       clutter_actor_get_position (actor, &x, &y);
@@ -541,22 +447,18 @@ maximize (MetaPlugin *plugin,
 
       clutter_actor_move_anchor_point (actor, anchor_x, anchor_y);
 
-      animation = clutter_actor_animate (actor,
-                                         CLUTTER_EASE_IN_SINE,
-                                         MAXIMIZE_TIMEOUT,
-                                         "scale-x", scale_x,
-                                         "scale-y", scale_y,
-                                         NULL);
-      apriv->tml_maximize = clutter_animation_get_timeline (animation);
-      data->plugin = plugin;
-      data->actor = actor;
-      g_signal_connect (apriv->tml_maximize, "completed",
-                        G_CALLBACK (on_maximize_effect_complete),
-                        data);
-      return;
-    }
+      clutter_actor_save_easing_state (actor);
+      clutter_actor_set_easing_mode (actor, CLUTTER_EASE_IN_SINE);
+      clutter_actor_set_easing_duration (actor, MAXIMIZE_TIMEOUT);
+      clutter_actor_set_scale (actor, scale_x, scale_y);
+      clutter_actor_restore_easing_state (actor);
 
-  meta_plugin_maximize_completed (plugin, window_actor);
+      g_signal_connect (actor, "transitions-completed",
+                        G_CALLBACK (on_maximize_effect_complete),
+                        plugin);
+    }
+  else
+    meta_plugin_maximize_completed (plugin, window_actor);
 }
 
 /*
@@ -569,39 +471,19 @@ unmaximize (MetaPlugin *plugin,
             MetaWindowActor *window_actor,
             gint end_x, gint end_y, gint end_width, gint end_height)
 {
-  MetaWindow *meta_window = meta_window_actor_get_meta_window (window_actor);
-  MetaWindowType type = meta_window_get_window_type (meta_window);
-
-  if (type == META_WINDOW_NORMAL)
-    {
-      ActorPrivate *apriv = get_actor_private (window_actor);
-
-      apriv->is_maximized = FALSE;
-    }
-
-  /* Do this conditionally, if the effect requires completion callback. */
   meta_plugin_unmaximize_completed (plugin, window_actor);
 }
 
 static void
-on_map_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data)
+on_map_effect_complete (ClutterActor *actor,
+                        MetaPlugin   *plugin)
 {
-  /*
-   * Must reverse the effect of the effect.
-   */
-  MetaPlugin *plugin = data->plugin;
-  MetaWindowActor  *window_actor = META_WINDOW_ACTOR (data->actor);
-  ActorPrivate  *apriv = get_actor_private (window_actor);
+  MetaWindowActor *window_actor = META_WINDOW_ACTOR (actor);
 
-  apriv->tml_map = NULL;
-
-  clutter_actor_move_anchor_point_from_gravity (data->actor,
-                                                CLUTTER_GRAVITY_NORTH_WEST);
+  clutter_actor_move_anchor_point_from_gravity (actor, CLUTTER_GRAVITY_NORTH_WEST);
 
   /* Now notify the manager that we are done with this effect */
   meta_plugin_map_completed (plugin, window_actor);
-
-  g_free (data);
 }
 
 /*
@@ -619,31 +501,21 @@ map (MetaPlugin *plugin, MetaWindowActor *window_actor)
 
   if (type == META_WINDOW_NORMAL)
     {
-      ClutterAnimation *animation;
-      EffectCompleteData *data = g_new0 (EffectCompleteData, 1);
-      ActorPrivate *apriv = get_actor_private (window_actor);
-
       clutter_actor_move_anchor_point_from_gravity (actor,
                                                     CLUTTER_GRAVITY_CENTER);
 
       clutter_actor_set_scale (actor, 0.0, 0.0);
       clutter_actor_show (actor);
 
-      animation = clutter_actor_animate (actor,
-                                         CLUTTER_EASE_IN_SINE,
-                                         MAP_TIMEOUT,
-                                         "scale-x", 1.0,
-                                         "scale-y", 1.0,
-                                         NULL);
-      apriv->tml_map = clutter_animation_get_timeline (animation);
-      data->actor = actor;
-      data->plugin = plugin;
-      g_signal_connect (apriv->tml_map, "completed",
+      clutter_actor_save_easing_state (actor);
+      clutter_actor_set_easing_mode (actor, CLUTTER_EASE_IN_SINE);
+      clutter_actor_set_easing_duration (actor, MAP_TIMEOUT);
+      clutter_actor_set_scale (actor, 1.0, 1.0);
+      clutter_actor_restore_easing_state (actor);
+
+      g_signal_connect (actor, "transitions-completed",
                         G_CALLBACK (on_map_effect_complete),
-                        data);
-
-      apriv->is_minimized = FALSE;
-
+                        plugin);
     }
   else
     meta_plugin_map_completed (plugin, window_actor);
@@ -654,13 +526,10 @@ map (MetaPlugin *plugin, MetaWindowActor *window_actor)
  * further action than notifying the manager that the effect is completed.
  */
 static void
-on_destroy_effect_complete (ClutterTimeline *timeline, EffectCompleteData *data)
+on_destroy_effect_complete (ClutterActor *actor,
+                            MetaPlugin   *plugin)
 {
-  MetaPlugin *plugin = data->plugin;
-  MetaWindowActor *window_actor = META_WINDOW_ACTOR (data->actor);
-  ActorPrivate *apriv = get_actor_private (window_actor);
-
-  apriv->tml_destroy = NULL;
+  MetaWindowActor *window_actor = META_WINDOW_ACTOR (actor);
 
   meta_plugin_destroy_completed (plugin, window_actor);
 }
@@ -679,74 +548,37 @@ destroy (MetaPlugin *plugin, MetaWindowActor *window_actor)
 
   if (type == META_WINDOW_NORMAL)
     {
-      ClutterAnimation *animation;
-      EffectCompleteData *data = g_new0 (EffectCompleteData, 1);
-      ActorPrivate *apriv = get_actor_private (window_actor);
-
       clutter_actor_move_anchor_point_from_gravity (actor,
                                                     CLUTTER_GRAVITY_CENTER);
 
-      animation = clutter_actor_animate (actor,
-                                         CLUTTER_EASE_IN_SINE,
-                                         DESTROY_TIMEOUT,
-                                         "scale-x", 0.0,
-                                         "scale-y", 1.0,
-                                         NULL);
-      apriv->tml_destroy = clutter_animation_get_timeline (animation);
-      data->plugin = plugin;
-      data->actor = actor;
-      g_signal_connect (apriv->tml_destroy, "completed",
+
+      clutter_actor_save_easing_state (actor);
+      clutter_actor_set_easing_mode (actor, CLUTTER_EASE_IN_SINE);
+      clutter_actor_set_easing_duration (actor, DESTROY_TIMEOUT);
+      clutter_actor_set_scale (actor, 1.0, 1.0);
+
+      g_signal_connect (actor, "transitions-completed",
                         G_CALLBACK (on_destroy_effect_complete),
-                        data);
+                        plugin);
     }
   else
     meta_plugin_destroy_completed (plugin, window_actor);
 }
 
 static void
-kill_switch_workspace (MetaPlugin     *plugin)
+kill_switch_workspace (MetaPlugin *plugin)
 {
   MetaDefaultPluginPrivate *priv = META_DEFAULT_PLUGIN (plugin)->priv;
 
-  if (priv->tml_switch_workspace1)
-    {
-      clutter_timeline_stop (priv->tml_switch_workspace1);
-      clutter_timeline_stop (priv->tml_switch_workspace2);
-      g_signal_emit_by_name (priv->tml_switch_workspace1, "completed", NULL);
-    }
+  clutter_actor_remove_all_transitions (priv->desktop1);
+  clutter_actor_remove_all_transitions (priv->desktop2);
 }
 
 static void
 kill_window_effects (MetaPlugin      *plugin,
                      MetaWindowActor *window_actor)
 {
-  ActorPrivate *apriv;
-
-  apriv = get_actor_private (window_actor);
-
-  if (apriv->tml_minimize)
-    {
-      clutter_timeline_stop (apriv->tml_minimize);
-      g_signal_emit_by_name (apriv->tml_minimize, "completed", NULL);
-    }
-
-  if (apriv->tml_maximize)
-    {
-      clutter_timeline_stop (apriv->tml_maximize);
-      g_signal_emit_by_name (apriv->tml_maximize, "completed", NULL);
-    }
-
-  if (apriv->tml_map)
-    {
-      clutter_timeline_stop (apriv->tml_map);
-      g_signal_emit_by_name (apriv->tml_map, "completed", NULL);
-    }
-
-  if (apriv->tml_destroy)
-    {
-      clutter_timeline_stop (apriv->tml_destroy);
-      g_signal_emit_by_name (apriv->tml_destroy, "completed", NULL);
-    }
+  clutter_actor_remove_all_transitions (CLUTTER_ACTOR (window_actor));
 }
 
 static const MetaPluginInfo *
