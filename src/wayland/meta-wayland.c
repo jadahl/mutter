@@ -361,6 +361,34 @@ meta_wayland_compositor_repick (MetaWaylandCompositor *compositor)
                                     NULL);
 }
 
+void
+meta_wayland_compositor_set_input_focus (MetaWaylandCompositor *compositor,
+                                         MetaWindow            *window)
+{
+  struct wl_surface *surface = NULL;
+
+  if (window)
+    {
+      MetaWindowActor *window_actor =
+        META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
+      ClutterActor *shaped_texture =
+        meta_window_actor_get_shaped_texture (window_actor);
+
+      if (CLUTTER_WAYLAND_IS_SURFACE (shaped_texture))
+        {
+          ClutterWaylandSurface *surface_actor =
+            CLUTTER_WAYLAND_SURFACE (shaped_texture);
+
+          surface = clutter_wayland_surface_get_surface (surface_actor);
+        }
+    }
+
+  wl_input_device_set_keyboard_focus ((struct wl_input_device *)
+                                      compositor->input_device,
+                                      (struct wl_surface *) surface,
+                                      get_time ());
+}
+
 static void
 surface_actor_destroyed_cb (void *user_data,
                             GObject *old_object)

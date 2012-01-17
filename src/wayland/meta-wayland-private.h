@@ -28,6 +28,7 @@
 
 #include "window-private.h"
 #include "meta-wayland-input-device.h"
+#include "window-private.h"
 
 typedef struct _MetaWaylandCompositor MetaWaylandCompositor;
 
@@ -133,17 +134,20 @@ struct _MetaWaylandCompositor
   guint32 implicit_grab_button;
 };
 
-void                    meta_wayland_init                   (void);
-void                    meta_wayland_finalize               (void);
+void                    meta_wayland_init                       (void);
+void                    meta_wayland_finalize                   (void);
 
 /* We maintain a singleton MetaWaylandCompositor which can be got at via this
  * API after meta_wayland_init() has been called. */
-MetaWaylandCompositor  *meta_wayland_compositor_get_default (void);
+MetaWaylandCompositor  *meta_wayland_compositor_get_default     (void);
 
-void                    meta_wayland_handle_sig_child       (void);
+void                    meta_wayland_handle_sig_child           (void);
 
-MetaWaylandSurface     *meta_wayland_lookup_surface_for_xid (guint32 xid);
+MetaWaylandSurface     *meta_wayland_lookup_surface_for_xid     (guint32 xid);
 
-void                    meta_wayland_compositor_repick      (MetaWaylandCompositor *compositor);
+void                    meta_wayland_compositor_repick          (MetaWaylandCompositor *compositor);
+
+void                    meta_wayland_compositor_set_input_focus (MetaWaylandCompositor *compositor,
+                                                                 MetaWindow            *window);
 
 #endif /* META_WAYLAND_PRIVATE_H */

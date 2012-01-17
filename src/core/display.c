@@ -72,6 +72,9 @@
 #include <X11/extensions/Xfixes.h>
 #include <string.h>
 #include <unistd.h>
+#ifdef HAVE_WAYLAND
+#include "meta-wayland-private.h"
+#endif
 
 #define GRAB_OP_IS_WINDOW_SWITCH(g)                     \
         (g == META_GRAB_OP_KEYBOARD_TABBING_NORMAL  ||  \
@@ -2167,6 +2170,15 @@ meta_display_handle_event (MetaDisplay *display,
         }
       break;
     case FocusIn:
+#ifdef HAVE_WAYLAND
+      {
+        MetaWaylandCompositor *compositor =
+          meta_wayland_compositor_get_default ();
+        meta_wayland_compositor_set_input_focus (compositor,
+                                                 window);
+      }
+#endif
+      /* fall through */
     case FocusOut:
       if (window)
         {
