@@ -170,7 +170,9 @@ libmutter_la_SOURCES +=				\
 	wayland/meta-wayland.c			\
 	wayland/meta-wayland-private.h		\
 	wayland/meta-wayland-input-device.h	\
-	wayland/meta-wayland-input-device.c
+	wayland/meta-wayland-input-device.c	\
+	wayland/meta-wayland-stage.h		\
+	wayland/meta-wayland-stage.c
 endif
 
 libmutter_la_LDFLAGS = -no-undefined

@@ -28,6 +28,7 @@
 #include <string.h>
 #include <linux/input.h>
 #include "meta-wayland-input-device.h"
+#include "meta-wayland-stage.h"
 #include "meta-wayland-private.h"
 
 struct _MetaWaylandInputDevice
@@ -45,6 +46,25 @@ input_device_attach (struct wl_client *client,
                      int32_t hotspot_x,
                      int32_t hotspot_y)
 {
+  MetaWaylandCompositor *compositor = meta_wayland_compositor_get_default ();
+  MetaWaylandStage *stage = META_WAYLAND_STAGE (compositor->stage);
+  MetaWaylandInputDevice *device = resource->data;
+  struct wl_input_device *input_device = (struct wl_input_device *) device;
+
+  if (time < input_device->pointer_focus_time)
+    return;
+  if (input_device->pointer_focus == NULL)
+    return;
+  if (input_device->pointer_focus->resource.client != client)
+    return;
+
+  if (buffer_resource)
+    meta_wayland_stage_set_cursor_from_buffer (stage,
+                                               buffer_resource->data,
+                                               hotspot_x,
+                                               hotspot_y);
+  else
+    meta_wayland_stage_set_invisible_cursor (stage);
 }
 
 const static struct wl_input_device_interface

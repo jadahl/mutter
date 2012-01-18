@@ -511,6 +511,7 @@ src/libmutter.pc
 src/mutter-plugins.pc
 src/tools/Makefile
 src/compositor/plugins/Makefile
+data/Makefile
 po/Makefile.in
 ])
 
