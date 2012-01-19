@@ -91,6 +91,8 @@ CoglHandle meta_shaped_texture_get_texture (MetaShapedTexture *stex);
 
 void meta_shaped_texture_set_shape_region (MetaShapedTexture *stex,
                                            cairo_region_t    *region);
+void meta_shaped_texture_set_input_shape_region (MetaShapedTexture *stex,
+                                                 cairo_region_t    *region);
 
 void meta_shaped_texture_set_overlay_path (MetaShapedTexture *stex,
                                            cairo_region_t    *overlay_region,

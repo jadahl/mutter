@@ -73,6 +73,8 @@ struct _MetaWindowActorPrivate
 
   /* If the window is shaped, a region that matches the shape */
   cairo_region_t   *shape_region;
+  /* If the window has an input shape, a region that matches the shape */
+  cairo_region_t   *input_shape_region;
   /* A rectangular region with the visible extents of the window */
   cairo_region_t   *bounding_region;
   /* The region we should clip to when painting the shadow */
@@ -163,9 +165,10 @@ static void     meta_window_actor_detach     (MetaWindowActor *self);
 #endif
 static gboolean meta_window_actor_has_shadow (MetaWindowActor *self);
 
-static void meta_window_actor_clear_shape_region    (MetaWindowActor *self);
-static void meta_window_actor_clear_bounding_region (MetaWindowActor *self);
-static void meta_window_actor_clear_shadow_clip     (MetaWindowActor *self);
+static void meta_window_actor_clear_shape_region        (MetaWindowActor *self);
+static void meta_window_actor_clear_input_shape_region  (MetaWindowActor *self);
+static void meta_window_actor_clear_bounding_region     (MetaWindowActor *self);
+static void meta_window_actor_clear_shadow_clip         (MetaWindowActor *self);
 
 static void meta_window_actor_update_bounding_region_and_borders (MetaWindowActor *self,
                                                                   int              width,
@@ -435,6 +438,7 @@ meta_window_actor_dispose (GObject *object)
 #endif
 
   meta_window_actor_clear_shape_region (self);
+  meta_window_actor_clear_input_shape_region (self);
   meta_window_actor_clear_bounding_region (self);
   meta_window_actor_clear_shadow_clip (self);
 
@@ -1641,6 +1645,18 @@ meta_window_actor_clear_shape_region (MetaWindowActor *self)
 }
 
 static void
+meta_window_actor_clear_input_shape_region (MetaWindowActor *self)
+{
+  MetaWindowActorPrivate *priv = self->priv;
+
+  if (priv->input_shape_region)
+    {
+      cairo_region_destroy (priv->input_shape_region);
+      priv->input_shape_region = NULL;
+    }
+}
+
+static void
 meta_window_actor_clear_bounding_region (MetaWindowActor *self)
 {
   MetaWindowActorPrivate *priv = self->priv;
@@ -1711,33 +1727,6 @@ meta_window_actor_update_bounding_region_and_borders (MetaWindowActor *self,
   meta_window_actor_update_shape (self);
 
   g_signal_emit (self, signals[SIZE_CHANGED], 0);
-}
-
-static void
-meta_window_actor_update_shape_region (MetaWindowActor *self,
-                                       cairo_region_t  *region)
-{
-  MetaWindowActorPrivate *priv = self->priv;
-
-  meta_window_actor_clear_shape_region (self);
-
-  /* region must be non-null */
-  priv->shape_region = region;
-  cairo_region_reference (region);
-
-  /* Our "shape_region" is called the "bounding region" in the X Shape
-   * Extension Documentation.
-   *
-   * Our "bounding_region" is called the "bounding rectangle", which defines
-   * the shape of the window as if it the window was unshaped.
-   *
-   * The X Shape extension requires that the "bounding region" can never
-   * extend outside the "bounding rectangle", and says it must be implicitly
-   * clipped before rendering. The region we get back hasn't been clipped.
-   * We explicitly clip the region here.
-   */
-  if (priv->bounding_region != NULL)
-    cairo_region_intersect (priv->shape_region, priv->bounding_region);
 }
 
 /**
@@ -2207,21 +2196,33 @@ update_corners (MetaWindowActor   *self,
 }
 
 static void
-check_needs_reshape (MetaWindowActor *self)
+union_shape_rectangles_with_region (cairo_region_t *region,
+                                    const XRectangle *rects,
+                                    int n_rects,
+                                    int dx,
+                                    int dy)
+{
+  int i;
+  for (i = 0; i < n_rects; i ++)
+    {
+      cairo_rectangle_int_t rect = { rects[i].x + dx,
+                                     rects[i].y + dy,
+                                     rects[i].width,
+                                     rects[i].height };
+      cairo_region_union_rectangle (region, &rect);
+    }
+}
+
+static void
+meta_window_actor_update_shape_region (MetaWindowActor *self,
+                                       MetaFrameBorders *borders)
 {
   MetaWindowActorPrivate *priv = self->priv;
   MetaScreen *screen = priv->screen;
   MetaDisplay *display = meta_screen_get_display (screen);
-  MetaFrameBorders borders;
   cairo_region_t *region;
 
-  if (!priv->needs_reshape)
-    return;
-
-  meta_shaped_texture_set_shape_region (META_SHAPED_TEXTURE (priv->actor), NULL);
   meta_window_actor_clear_shape_region (self);
-
-  meta_frame_calc_borders (priv->window->frame, &borders);
 
   region = meta_window_get_frame_bounds (priv->window);
   if (region != NULL)
@@ -2241,17 +2242,17 @@ check_needs_reshape (MetaWindowActor *self)
   if (priv->window->has_shape)
     {
       Display *xdisplay = meta_display_get_xdisplay (display);
+      cairo_rectangle_int_t client_area;
       XRectangle *rects;
       int n_rects, ordering;
-      cairo_rectangle_int_t client_area;
 
       client_area.width = priv->window->rect.width;
       client_area.height = priv->window->rect.height;
 
       if (priv->window->frame)
         {
-          client_area.x = borders.total.left;
-          client_area.y = borders.total.top;
+          client_area.x = borders->total.left;
+          client_area.y = borders->total.top;
         }
       else
         {
@@ -2272,26 +2273,154 @@ check_needs_reshape (MetaWindowActor *self)
 
       if (rects)
         {
-          int i;
-          for (i = 0; i < n_rects; i ++)
-            {
-              cairo_rectangle_int_t rect = { rects[i].x + client_area.x,
-                                             rects[i].y + client_area.y,
-                                             rects[i].width,
-                                             rects[i].height };
-              cairo_region_union_rectangle (region, &rect);
-            }
+          union_shape_rectangles_with_region (region, rects, n_rects,
+                                              client_area.x,
+                                              client_area.y);
           XFree (rects);
         }
+
+      /* Our "shape_region" is called the "bounding region" in the X Shape
+       * Extension Documentation.
+       *
+       * Our "bounding_region" is called the "bounding rectangle", which
+       * defines the shape of the window as if it the window was unshaped.
+       *
+       * The X Shape extension requires that the "bounding region" can never
+       * extend outside the "bounding rectangle", and says it must be
+       * implicitly clipped before rendering. The region we get back hasn't
+       * been clipped.  We explicitly clip the region here.
+       */
+      if (priv->bounding_region != NULL)
+        cairo_region_intersect (region, priv->bounding_region);
     }
 #endif
 
+  priv->shape_region = region;
+}
+
+static void
+meta_window_actor_update_input_shape_region (MetaWindowActor *self)
+{
+  MetaWindowActorPrivate *priv = self->priv;
+  MetaScreen *screen = priv->screen;
+  MetaDisplay *display = meta_screen_get_display (screen);
+  cairo_region_t *region;
+  cairo_rectangle_int_t default_input_rect;
+  MetaRectangle *default_input_meta_rect;
+#ifdef HAVE_SHAPE
+  Display *xdisplay = meta_display_get_xdisplay (display);
+  XRectangle *rects;
+  int n_rects, ordering;
+  cairo_region_t *bounding_region;
+#endif
+
+  meta_window_actor_clear_input_shape_region (self);
+
+  /* According to the X Shape extension spec; to determine the "effective input
+   * region" used by the x server we need to intersect our region with the
+   * default input region for the window... */
+  if (priv->window->frame)
+    default_input_meta_rect = &priv->window->frame->rect;
+  else
+    default_input_meta_rect = &priv->window->rect;
+
+  default_input_rect.x  = 0;
+  default_input_rect.y = 0;
+  default_input_rect.width = default_input_meta_rect->width;
+  default_input_rect.height = default_input_meta_rect->height;
+
+#ifdef HAVE_SHAPE
+  /* Note: we assume that the effective input area of frames matches the
+   * default input rectangle.
+   */
+  if (!priv->window->frame &&
+      (priv->window->has_shape || priv->window->has_input_shape))
+    {
+      bounding_region = cairo_region_create ();
+
+      /* Strictly speaking the shape_region we compute in
+       * meta_window_actor_update_shape_region() isn't exactly the "bounding
+       * region" according to the X Shape extension and so we need to query the
+       * true bounding region so we can correctly determine the "effective
+       * input region". */
+      meta_error_trap_push (display);
+      rects = XShapeGetRectangles (xdisplay,
+                                   priv->window->xwindow,
+                                   ShapeBounding,
+                                   &n_rects,
+                                   &ordering);
+      meta_error_trap_pop (display);
+      if (rects)
+        {
+          union_shape_rectangles_with_region (bounding_region, rects, n_rects,
+                                              0, 0);
+          XFree (rects);
+        }
+
+      if (!priv->window->frame)
+        {
+          region = cairo_region_create ();
+
+          /* Note we only actually query the ShapeInput shape of a window when we
+           * don't have a frame because we assume currently that mutter never sets
+           * an ShapeInput shape on a frame. */
+          meta_error_trap_push (display);
+          rects = XShapeGetRectangles (xdisplay,
+                                       priv->window->xwindow,
+                                       ShapeInput,
+                                       &n_rects,
+                                       &ordering);
+          meta_error_trap_pop (display);
+          if (rects)
+            {
+              union_shape_rectangles_with_region (region, rects, n_rects, 0, 0);
+              XFree (rects);
+            }
+          cairo_region_intersect (region, bounding_region);
+          cairo_region_destroy (bounding_region);
+          bounding_region = NULL;
+        }
+      else
+        {
+          /* We assume that we never set a ShapeInput shape on frame windows so we
+           * can assume the input shape matches the bounding region. */
+          region = bounding_region;
+          bounding_region = NULL;
+        }
+
+      /* As well as intersecting our input region with the bounding shape the X
+       * Shape extension also requires us to intersect with the default input
+       * bounds to determine the "effective input region"... */
+      cairo_region_intersect_rectangle (region, &default_input_rect);
+    }
+  else
+#endif /* HAVE_SHAPE */
+    {
+      region = cairo_region_create();
+      cairo_region_union_rectangle (region, &default_input_rect);
+    }
+
+  priv->input_shape_region = region;
+}
+
+static void
+check_needs_reshape (MetaWindowActor *self)
+{
+  MetaWindowActorPrivate *priv = self->priv;
+  MetaFrameBorders borders;
+
+  if (!priv->needs_reshape)
+    return;
+
+  meta_frame_calc_borders (priv->window->frame, &borders);
+
+  meta_window_actor_update_shape_region (self, &borders);
+  meta_window_actor_update_input_shape_region (self);
+
   meta_shaped_texture_set_shape_region (META_SHAPED_TEXTURE (priv->actor),
-                                        region);
-
-  meta_window_actor_update_shape_region (self, region);
-
-  cairo_region_destroy (region);
+                                        priv->shape_region);
+  meta_shaped_texture_set_input_shape_region (META_SHAPED_TEXTURE (priv->actor),
+                                              priv->input_shape_region);
 
   update_corners (self, &borders);
 

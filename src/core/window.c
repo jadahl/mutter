@@ -809,6 +809,7 @@ meta_window_new_full (MetaDisplay         *display,
   gulong event_mask;
   MetaMoveResizeFlags flags;
   gboolean has_shape;
+  gboolean has_input_shape;
   MetaScreen *screen;
 
   g_assert (attrs != NULL);
@@ -937,6 +938,7 @@ meta_window_new_full (MetaDisplay         *display,
     }
 
   has_shape = FALSE;
+  has_input_shape = FALSE;
 #ifdef HAVE_SHAPE
   if (META_DISPLAY_HAS_SHAPE (display) &&
       client_type == META_WINDOW_CLIENT_TYPE_X11)
@@ -944,6 +946,8 @@ meta_window_new_full (MetaDisplay         *display,
       int x_bounding, y_bounding, x_clip, y_clip;
       unsigned w_bounding, h_bounding, w_clip, h_clip;
       int bounding_shaped, clip_shaped;
+      XRectangle *input_rectangles;
+      int n_rects, ordering;
 
       XShapeSelectInput (display->xdisplay, xwindow, ShapeNotifyMask);
 
@@ -954,6 +958,27 @@ meta_window_new_full (MetaDisplay         *display,
                           &w_clip, &h_clip);
 
       has_shape = bounding_shaped != FALSE;
+
+      /* XXX: The x shape extension doesn't provide a way to only test if an
+       * input shape has been specified, so we have to query and throw away the
+       * rectangles. */
+      meta_error_trap_push (display);
+      input_rectangles = XShapeGetRectangles (display->xdisplay, xwindow,
+                                              ShapeInput, &n_rects, &ordering);
+      meta_error_trap_pop (display);
+      if (input_rectangles)
+        {
+          if (n_rects > 1 ||
+              (n_rects == 1 &&
+               (input_rectangles[0].x != x_bounding ||
+                input_rectangles[1].y != y_bounding ||
+                input_rectangles[2].width != w_bounding ||
+                input_rectangles[3].height != h_bounding)))
+            {
+              has_input_shape = TRUE;
+            }
+          XFree (input_rectangles);
+        }
 
       meta_topic (META_DEBUG_SHAPES,
                   "Window has_shape = %d extents %d,%d %u x %u\n",
@@ -1024,6 +1049,7 @@ meta_window_new_full (MetaDisplay         *display,
   meta_stack_freeze (window->screen->stack);
 
   window->has_shape = has_shape;
+  window->has_input_shape = has_input_shape;
 
   window->rect.x = attrs->x;
   window->rect.y = attrs->y;
