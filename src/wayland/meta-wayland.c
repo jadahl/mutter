@@ -21,10 +21,12 @@
 
 #include <config.h>
 
+#define CLUTTER_ENABLE_EXPERIMENTAL_API
 #define COGL_ENABLE_EXPERIMENTAL_2_0_API
 #include <clutter/clutter.h>
 #include <clutter/wayland/clutter-wayland-compositor.h>
 #include <clutter/wayland/clutter-wayland-surface.h>
+#include <clutter/evdev/clutter-evdev.h>
 
 #include <glib.h>
 #include <sys/time.h>
@@ -37,12 +39,14 @@
 #include <sys/un.h>
 #include <stdlib.h>
 #include <sys/wait.h>
+#include <xf86drm.h>
 
 #include <wayland-server.h>
 
 #include "xserver-server-protocol.h"
 
 #include "meta-wayland-private.h"
+#include "meta-tty.h"
 #include "meta-wayland-stage.h"
 #include "meta-window-actor-private.h"
 #include "display-private.h"
@@ -1456,6 +1460,26 @@ event_emission_hook_cb (GSignalInvocationHint *ihint,
   return TRUE /* stay connected */;
 }
 
+static void
+vt_func (MetaWaylandCompositor *compositor,
+         MetaTTYVTEvent event)
+{
+  switch (event)
+    {
+    case META_TTY_VT_EVENT_ENTER:
+      if (drmSetMaster (compositor->drm_fd))
+        g_critical ("failed to set master: %m\n");
+      clutter_actor_queue_redraw (compositor->stage);
+      clutter_evdev_reclaim_devices ();
+      break;
+    case META_TTY_VT_EVENT_LEAVE:
+      clutter_evdev_release_devices ();
+      if (drmDropMaster(compositor->drm_fd) < 0)
+        g_warning ("failed to drop master: %m\n");
+      break;
+    };
+}
+
 void
 meta_wayland_init (void)
 {
@@ -1468,18 +1492,28 @@ meta_wayland_init (void)
   if (compositor->wayland_display == NULL)
     g_error ("failed to create wayland display");
 
+  /* XXX: Come up with a more elegant approach... */
+  if (strcmp (getenv ("CLUTTER_BACKEND"), "eglnative") == 0)
+    compositor->tty = meta_tty_create (compositor, vt_func, 0);
+
   g_queue_init (&compositor->frame_callbacks);
 
   if (!wl_display_add_global (compositor->wayland_display,
                               &wl_compositor_interface,
 			      compositor,
                               compositor_bind))
-    g_error ("Failed to register wayland compositor object");
+    {
+      g_printerr ("Failed to register wayland compositor object");
+      goto error;
+    }
 
   compositor->wayland_shm = wl_shm_init (compositor->wayland_display,
                                          &shm_callbacks);
   if (!compositor->wayland_shm)
-    g_error ("Failed to allocate setup wayland shm callbacks");
+    {
+      g_printerr ("Failed to allocate setup wayland shm callbacks");
+      goto error;
+    }
 
   compositor->wayland_loop =
     wl_display_get_event_loop (compositor->wayland_display);
@@ -1502,7 +1536,10 @@ meta_wayland_init (void)
   clutter_wayland_set_compositor_display (compositor->wayland_display);
 
   if (clutter_init (NULL, NULL) != CLUTTER_INIT_SUCCESS)
-    g_error ("Failed to initialize Clutter");
+    {
+      g_printerr ("Failed to initialize Clutter");
+      goto error;
+    }
 
   compositor->stage = meta_wayland_stage_new ();
   clutter_stage_set_user_resizable (CLUTTER_STAGE (compositor->stage), FALSE);
@@ -1523,6 +1560,16 @@ meta_wayland_init (void)
                               compositor, /* hook_data */
                               NULL /* data_destroy */);
 
+  if (compositor->tty)
+    {
+      ClutterBackend *clutter_backend = clutter_get_default_backend ();
+      CoglContext *cogl_context = clutter_backend_get_cogl_context (clutter_backend);
+      CoglDisplay *cogl_display = cogl_context_get_display (cogl_context);
+      CoglRenderer *cogl_renderer = cogl_display_get_renderer (cogl_display);
+
+      compositor->drm_fd = cogl_kms_renderer_get_kms_fd (cogl_renderer);
+    }
+
   wl_data_device_manager_init (compositor->wayland_display);
 
   compositor->input_device =
@@ -1533,12 +1580,18 @@ meta_wayland_init (void)
 
   if (wl_display_add_global (compositor->wayland_display, &wl_shell_interface,
                              compositor, bind_shell) == NULL)
-    g_error ("Failed to register a global shell object");
+    {
+      g_printerr ("Failed to register a global shell object");
+      goto error;
+    }
 
   clutter_actor_show (compositor->stage);
 
   if (wl_display_add_socket (compositor->wayland_display, "wayland-0"))
-    g_error ("Failed to create socket");
+    {
+      g_printerr ("Failed to create socket");
+      goto error;
+    }
 
   wl_display_add_global (compositor->wayland_display,
                          &xserver_interface,
@@ -1559,7 +1612,10 @@ meta_wayland_init (void)
    */
 
   if (!start_xwayland (compositor))
-    g_error ("Failed to start X Wayland");
+    {
+      g_printerr ("Failed to start X Wayland");
+      goto error;
+    }
 
   putenv (g_strdup_printf ("DISPLAY=:%d", compositor->xwayland_display_index));
 
@@ -1569,12 +1625,19 @@ meta_wayland_init (void)
   compositor->init_loop = g_main_loop_new (NULL, FALSE);
 
   g_main_loop_run (compositor->init_loop);
+
+  return;
+error:
+  meta_tty_destroy (compositor->tty);
 }
 
 void
 meta_wayland_finalize (void)
 {
-  stop_xwayland (meta_wayland_compositor_get_default ());
+  MetaWaylandCompositor *compositor = meta_wayland_compositor_get_default ();
+  if (compositor->tty)
+    meta_tty_destroy (compositor->tty);
+  stop_xwayland (compositor);
 }
 
 void

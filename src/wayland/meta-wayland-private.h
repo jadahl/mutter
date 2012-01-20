@@ -109,6 +109,8 @@ struct _MetaWaylandCompositor
   struct wl_event_loop *wayland_loop;
   GMainLoop *init_loop;
   ClutterActor *stage;
+  int drm_fd;
+  struct tty *tty;
   GList *outputs;
   GSource *wayland_event_source;
   GList *surfaces;
