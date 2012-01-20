@@ -388,6 +388,8 @@ meta_wayland_compositor_set_input_focus (MetaWaylandCompositor *compositor,
                                       compositor->input_device,
                                       (struct wl_surface *) surface,
                                       get_time ());
+  wl_data_device_set_keyboard_focus ((struct wl_input_device *)
+                                      compositor->input_device);
 }
 
 static void
@@ -1331,6 +1333,8 @@ meta_wayland_init (void)
                     G_CALLBACK (stage_destroy_cb), NULL);
   g_signal_connect (compositor->stage, "event",
                     G_CALLBACK (event_cb), compositor);
+
+  wl_data_device_manager_init (compositor->wayland_display);
 
   compositor->input_device =
     meta_wayland_input_device_new (compositor->wayland_display,
