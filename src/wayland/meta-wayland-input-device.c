@@ -138,11 +138,36 @@ handle_motion_event (MetaWaylandInputDevice *input_device,
 }
 
 static void
-handle_button_event (MetaWaylandInputDevice *input_device,
-                     const ClutterButtonEvent *event)
+handle_button (MetaWaylandInputDevice *input_device,
+               uint32_t time,
+               uint32_t button,
+               gboolean state)
 {
   struct wl_input_device *device =
     (struct wl_input_device *) input_device;
+
+  if (state)
+    {
+      if (device->button_count == 0)
+        {
+          device->grab_button = button;
+          device->grab_time = time;
+          device->grab_x = device->x;
+          device->grab_y = device->y;
+        }
+
+      device->button_count++;
+    }
+  else
+    device->button_count--;
+
+  device->grab->interface->button (device->grab, time, button, state);
+}
+
+static void
+handle_button_event (MetaWaylandInputDevice *input_device,
+                     const ClutterButtonEvent *event)
+{
   gboolean state = event->type == CLUTTER_BUTTON_PRESS;
   uint32_t button;
 
@@ -163,22 +188,7 @@ handle_button_event (MetaWaylandInputDevice *input_device,
       break;
     }
 
-  if (state)
-    {
-      if (device->button_count == 0)
-        {
-          device->grab_button = button;
-          device->grab_time = event->time;
-          device->grab_x = device->x;
-          device->grab_y = device->y;
-        }
-
-      device->button_count++;
-    }
-  else
-    device->button_count--;
-
-  device->grab->interface->button (device->grab, event->time, button, state);
+  handle_button (input_device, event->time, button, state);
 }
 
 static void
@@ -245,6 +255,43 @@ handle_key_event (MetaWaylandInputDevice *input_device,
                             state);
 }
 
+static void
+handle_scroll_event (MetaWaylandInputDevice *input_device,
+                     const ClutterScrollEvent *event)
+{
+  int button;
+
+  /* Clutter converts the scroll button events into separate scroll
+     events. We want to convert these back to button press and release
+     events */
+
+  switch (event->direction)
+    {
+    case CLUTTER_SCROLL_UP:
+      button = BTN_SIDE;
+      break;
+
+    case CLUTTER_SCROLL_DOWN:
+      button = BTN_EXTRA;
+      break;
+
+    case CLUTTER_SCROLL_LEFT:
+      button = BTN_FORWARD;
+      break;
+
+    case CLUTTER_SCROLL_RIGHT:
+      button = BTN_BACK;
+      break;
+
+    default:
+      return;
+    }
+
+  /* Synthesize a button press and release */
+  handle_button (input_device, event->time, button, TRUE /* press */);
+  handle_button (input_device, event->time, button, FALSE /* release */);
+}
+
 void
 meta_wayland_input_device_handle_event (MetaWaylandInputDevice *input_device,
                                         const ClutterEvent *event)
@@ -266,6 +313,11 @@ meta_wayland_input_device_handle_event (MetaWaylandInputDevice *input_device,
     case CLUTTER_KEY_RELEASE:
       handle_key_event (input_device,
                         (const ClutterKeyEvent *) event);
+      break;
+
+    case CLUTTER_SCROLL:
+      handle_scroll_event (input_device,
+                           (const ClutterScrollEvent *) event);
       break;
 
     default:
