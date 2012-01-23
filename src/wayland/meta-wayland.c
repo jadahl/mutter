@@ -290,6 +290,19 @@ meta_wayland_surface_attach_buffer (struct wl_client *wayland_client,
       if (!clutter_wayland_surface_attach_buffer (surface_actor, wayland_buffer,
                                                   NULL))
         g_warning ("Failed to attach buffer to ClutterWaylandSurface");
+
+      g_assert (surface->window);
+
+      if (surface->window->client_type == META_WINDOW_CLIENT_TYPE_WAYLAND)
+        {
+          int x, y;
+          meta_window_get_position (surface->window, &x, &y);
+          meta_window_move_resize (surface->window,
+                                   TRUE,
+                                   x, y,
+                                   wayland_buffer->width,
+                                   wayland_buffer->height);
+        }
     }
 
   surface->buffer = buffer;
@@ -588,12 +601,107 @@ compositor_bind (struct wl_client *client,
                         &meta_wayland_compositor_interface, id, compositor);
 }
 
-static void
-shell_surface_move(struct wl_client *client,
-                   struct wl_resource *resource,
-                   struct wl_resource *input_resource,
-                   guint32 time)
+typedef struct
 {
+  struct wl_grab grab;
+  int dx;
+  int dy;
+  MetaWaylandSurface *surface;
+} MetaWaylandMoveState;
+
+static void
+noop_grab_focus (struct wl_grab *grab,
+                 guint32 time,
+                 struct wl_surface *surface,
+                 gint32 x,
+                 gint32 y)
+{
+  grab->focus = NULL;
+}
+
+static void
+move_grab_motion (struct wl_grab *grab,
+                  guint32 time,
+                  gint32 x,
+                  gint32 y)
+{
+  MetaWaylandMoveState *state = (MetaWaylandMoveState *)grab;
+  struct wl_input_device *device = grab->input_device;
+  MetaWaylandSurface *surface = state->surface;
+
+  meta_window_move (surface->window,
+                    TRUE,
+                    device->x + state->dx,
+                    device->y + state->dy);
+}
+
+static void
+move_grab_button (struct wl_grab *grab,
+                  guint32 time,
+                  gint32 button,
+                  gint32 state)
+{
+  struct wl_input_device *device = grab->input_device;
+
+  if (device->button_count == 0 && state == 0)
+    {
+      wl_input_device_end_grab(device, time);
+      g_slice_free (MetaWaylandMoveState, (MetaWaylandMoveState *)grab);
+  }
+}
+
+
+static const struct wl_grab_interface move_grab_interface = {
+    noop_grab_focus,
+    move_grab_motion,
+    move_grab_button,
+};
+
+static int
+meta_wayland_surface_move (MetaWaylandSurface *surface,
+                           MetaWaylandInputDevice *input_device,
+                           guint32 time)
+{
+  MetaWaylandMoveState *state = g_slice_new (MetaWaylandMoveState);
+  struct wl_input_device *wayland_device =
+    (struct wl_input_device *)input_device;
+  int x, y;
+
+  meta_window_get_position (surface->window, &x, &y);
+
+  state->grab.interface = &move_grab_interface;
+  state->dx = x - wayland_device->grab_x;
+  state->dy = y - wayland_device->grab_y;
+  state->surface = surface;
+
+  wl_input_device_start_grab (wayland_device, &state->grab, time);
+
+  wl_input_device_set_pointer_focus (wayland_device,
+                                     NULL, time, 0, 0, 0, 0);
+
+  return 0;
+}
+
+static void
+shell_surface_move (struct wl_client *client,
+                    struct wl_resource *resource,
+		    struct wl_resource *input_resource,
+                    guint32 time)
+{
+  MetaWaylandInputDevice *input_device = input_resource->data;
+  struct wl_input_device *wayland_device =
+    (struct wl_input_device *)input_device;
+  MetaWaylandShellSurface *shell_surface = resource->data;
+
+  if (wayland_device->button_count == 0 ||
+      wayland_device->grab_time != time ||
+      wayland_device->pointer_focus !=
+      &shell_surface->surface->wayland_surface)
+    return;
+
+  if (meta_wayland_surface_move (shell_surface->surface,
+                                 input_device, time) < 0)
+    wl_resource_post_no_memory (resource);
 }
 
 static void

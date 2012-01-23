@@ -150,10 +150,25 @@ handle_button (MetaWaylandInputDevice *input_device,
     {
       if (device->button_count == 0)
         {
+          struct wl_input_device *wayland_device =
+            (struct wl_input_device *)input_device;
+          struct wl_surface *wayland_surface = wayland_device->current;
+          MetaWaylandSurface *surface;
+
           device->grab_button = button;
           device->grab_time = time;
           device->grab_x = device->x;
           device->grab_y = device->y;
+
+          if (wayland_surface)
+            {
+              surface = wayland_surface->resource.data;
+              if (surface->window &&
+                  surface->window->client_type == META_WINDOW_CLIENT_TYPE_WAYLAND)
+                {
+                  meta_window_raise (surface->window);
+                }
+            }
         }
 
       device->button_count++;
