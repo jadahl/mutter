@@ -1192,6 +1192,26 @@ event_cb (ClutterActor *stage,
   if (device->pointer_focus == NULL)
     meta_wayland_stage_set_default_cursor (META_WAYLAND_STAGE (stage));
 
+  /* HACK: for now, the surfaces from Wayland clients aren't
+     integrated into Mutter's stacking and Mutter won't give them
+     focus on mouse clicks. As a hack to work around this we can just
+     give them input focus on mouse clicks so we can at least test the
+     keyboard support */
+  if (event->type == CLUTTER_BUTTON_PRESS)
+    {
+      MetaWaylandSurface *surface = (MetaWaylandSurface *) device->current;
+
+      /* Only focus surfaces that wouldn't be handled by the
+         corresponding X events */
+      if (surface && surface->xid == 0)
+        {
+          wl_input_device_set_keyboard_focus (device,
+                                              (struct wl_surface *) surface,
+                                              event->any.time);
+          wl_data_device_set_keyboard_focus (device);
+        }
+    }
+
   display = meta_get_display ();
   if (!display)
     return FALSE;
