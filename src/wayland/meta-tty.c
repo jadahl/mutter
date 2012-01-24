@@ -37,37 +37,24 @@
 #include "meta-tty.h"
 
 struct tty {
-	MetaWaylandCompositor *compositor;
 	int fd;
 	struct termios terminal_attributes;
 
 	struct wl_event_source *input_source;
 	struct wl_event_source *enter_vt_source;
 	struct wl_event_source *leave_vt_source;
-	MetaTTYVTFunc vt_func;
 };
 
-static int on_enter_vt(int signal_number, void *data)
+void
+meta_tty_enter_vt (struct tty *tty)
 {
-	struct tty *tty = data;
-
 	ioctl(tty->fd, VT_RELDISP, VT_ACKACQ);
-
-	tty->vt_func(tty->compositor, META_TTY_VT_EVENT_ENTER);
-
-	return 1;
 }
 
-static int
-on_leave_vt(int signal_number, void *data)
+void
+meta_tty_leave_vt (struct tty *tty)
 {
-	struct tty *tty = data;
-
-	tty->vt_func(tty->compositor, META_TTY_VT_EVENT_LEAVE);
-
 	ioctl(tty->fd, VT_RELDISP, 1);
-
-	return 1;
 }
 
 static int
@@ -118,9 +105,7 @@ try_open_vt(void)
 }
 
 struct tty *
-meta_tty_create (MetaWaylandCompositor *compositor,
-                 MetaTTYVTFunc vt_func,
-                 int tty_nr)
+meta_tty_create (MetaWaylandCompositor *compositor, int tty_nr)
 {
 	struct termios raw_attributes;
 	struct vt_mode mode = { 0 };
@@ -135,8 +120,6 @@ meta_tty_create (MetaWaylandCompositor *compositor,
 		return NULL;
 
 	memset(tty, 0, sizeof *tty);
-	tty->compositor = compositor;
-	tty->vt_func = vt_func;
 	if (tty_nr > 0) {
 		snprintf(filename, sizeof filename, "/dev/tty%d", tty_nr);
 		g_warning ("compositor: using %s\n", filename);
@@ -189,11 +172,6 @@ meta_tty_create (MetaWaylandCompositor *compositor,
 		g_warning ("failed to take control of vt handling\n");
 		return NULL;
 	}
-
-	tty->leave_vt_source =
-		wl_event_loop_add_signal(loop, SIGUSR1, on_leave_vt, tty);
-	tty->enter_vt_source =
-		wl_event_loop_add_signal(loop, SIGUSR2, on_enter_vt, tty);
 
 	return tty;
 }

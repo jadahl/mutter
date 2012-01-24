@@ -24,21 +24,17 @@
 
 G_BEGIN_DECLS
 
-typedef enum {
-  META_TTY_VT_EVENT_ENTER,
-  META_TTY_VT_EVENT_LEAVE
-} MetaTTYVTEvent;
-
-typedef void (*MetaTTYVTFunc)(MetaWaylandCompositor *compositor,
-                              MetaTTYVTEvent event);
-
 struct tty *
-meta_tty_create (MetaWaylandCompositor *compositor,
-                 MetaTTYVTFunc callback,
-                 int tty_nr);
+meta_tty_create (MetaWaylandCompositor *compositor, int tty_nr);
 
 void
 meta_tty_destroy(struct tty *tty);
+
+void
+meta_tty_enter_vt (struct tty *tty);
+
+void
+meta_tty_leave_vt (struct tty *tty);
 
 G_END_DECLS
 

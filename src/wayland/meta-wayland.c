@@ -55,7 +55,12 @@
 #include <meta/main.h>
 #include "frame.h"
 
+static gboolean on_sigusr_channel_io (GIOChannel *channel,
+                                      GIOCondition condition,
+                                      void *user_data);
+
 static MetaWaylandCompositor _meta_wayland_compositor;
+static int sigusr_pipe_fds[2];
 
 MetaWaylandCompositor *
 meta_wayland_compositor_get_default (void)
@@ -1461,23 +1466,126 @@ event_emission_hook_cb (GSignalInvocationHint *ihint,
 }
 
 static void
-vt_func (MetaWaylandCompositor *compositor,
-         MetaTTYVTEvent event)
+on_vt_enter (MetaWaylandCompositor *compositor)
 {
-  switch (event)
+  meta_tty_enter_vt (compositor->tty);
+
+  if (drmSetMaster (compositor->drm_fd))
+    g_critical ("failed to set master: %m\n");
+  clutter_actor_queue_redraw (compositor->stage);
+  clutter_evdev_reclaim_devices ();
+
+  /* While we are switched away from mutter we run a special mainloop
+   * that only responds to the sigusr signals we get when switching
+   * vts so now that we have regained focus we can quit that loop...
+   */
+
+  if (compositor->sigusr_loop)
+    g_main_loop_quit (compositor->sigusr_loop);
+}
+
+static GSource *
+create_sigusr_source (MetaWaylandCompositor *compositor)
+{
+  GSource *source = g_io_create_watch (compositor->sigusr_channel, G_IO_IN);
+  g_source_set_callback (source, (GSourceFunc)on_sigusr_channel_io,
+                         compositor, NULL);
+  return source;
+}
+
+static void
+on_vt_leave (MetaWaylandCompositor *compositor)
+{
+  GMainContext *tmp_context = g_main_context_new ();
+  GSource *source;
+
+  clutter_evdev_release_devices ();
+  if (drmDropMaster(compositor->drm_fd) < 0)
+    g_warning ("failed to drop master: %m\n");
+
+  /* Now we don't want to do any drawing or service clients
+   * until we regain focus so we run a new mainloop that will
+   * only respond to the SIGUSR signals we have at vt switch.
+   */
+
+  compositor->sigusr_loop = g_main_loop_new (tmp_context, TRUE);
+
+  /* XXX: glib doesn't let you remove a source from a non default
+   * context it only lets you destroy it so we have to create a
+   * new source... */
+  source = create_sigusr_source (compositor);
+
+  g_source_attach (source, tmp_context);
+
+  meta_tty_leave_vt (compositor->tty);
+
+  g_main_loop_run (compositor->sigusr_loop);
+
+  g_source_destroy (source);
+  g_main_loop_unref (compositor->sigusr_loop);
+  compositor->sigusr_loop = NULL;
+  g_main_context_unref (tmp_context);
+}
+
+static gboolean
+on_sigusr_channel_io (GIOChannel *channel,
+                      GIOCondition condition,
+                      void *user_data)
+{
+  MetaWaylandCompositor *compositor = user_data;
+  char signal;
+  int count;
+
+  for (;;)
     {
-    case META_TTY_VT_EVENT_ENTER:
-      if (drmSetMaster (compositor->drm_fd))
-        g_critical ("failed to set master: %m\n");
-      clutter_actor_queue_redraw (compositor->stage);
-      clutter_evdev_reclaim_devices ();
+      count = read (sigusr_pipe_fds[0], &signal, 1);
+      if (count == EINTR)
+        continue;
+      if (count < 0)
+        {
+          const char *msg = strerror (errno);
+          g_warning ("Error handling signal: %s", msg);
+        }
+      if (count != 1)
+        {
+          g_warning ("Unexpectedly failed to read byte from signal pipe\n");
+          return TRUE;
+        }
       break;
-    case META_TTY_VT_EVENT_LEAVE:
-      clutter_evdev_release_devices ();
-      if (drmDropMaster(compositor->drm_fd) < 0)
-        g_warning ("failed to drop master: %m\n");
+    }
+  switch (signal)
+    {
+    case '1': /* SIGUSR1 */
+      on_vt_leave (compositor);
       break;
-    };
+    case '2': /* SIGUSR2 */
+      on_vt_enter (compositor);
+      break;
+    default:
+      g_warning ("Spurious character '%c' read from sigusr signal pipe",
+                 signal);
+    }
+
+  return TRUE;
+}
+
+static void
+sigusr_signal_handler (int signum)
+{
+  if (sigusr_pipe_fds[1] >= 0)
+    {
+      switch (signum)
+        {
+        case SIGUSR1:
+          write (sigusr_pipe_fds[1], "1", 1);
+          break;
+        case SIGUSR2:
+          write (sigusr_pipe_fds[1], "2", 1);
+          break;
+        default:
+          break;
+        }
+    }
 }
 
 void
@@ -1494,7 +1602,37 @@ meta_wayland_init (void)
 
   /* XXX: Come up with a more elegant approach... */
   if (strcmp (getenv ("CLUTTER_BACKEND"), "eglnative") == 0)
-    compositor->tty = meta_tty_create (compositor, vt_func, 0);
+    {
+      struct sigaction act;
+      sigset_t empty_mask;
+      GIOChannel *channel;
+      GSource *source;
+
+      pipe (sigusr_pipe_fds);
+
+      channel = g_io_channel_unix_new (sigusr_pipe_fds[0]);
+      g_io_channel_set_close_on_unref (channel, TRUE);
+      g_io_channel_set_flags (channel, G_IO_FLAG_NONBLOCK, NULL);
+      compositor->sigusr_channel = channel;
+
+      source = create_sigusr_source (compositor);
+      g_source_attach (source, NULL);
+      g_source_unref (source);
+
+      sigemptyset (&empty_mask);
+      act.sa_handler = &sigusr_signal_handler;
+      act.sa_mask    = empty_mask;
+      act.sa_flags   = 0;
+
+      if (sigaction (SIGUSR1,  &act, NULL) < 0)
+        g_printerr ("Failed to register SIGUSR1 handler: %s\n",
+                    g_strerror (errno));
+      if (sigaction (SIGUSR2,  &act, NULL) < 0)
+        g_printerr ("Failed to register SIGUSR1 handler: %s\n",
+                    g_strerror (errno));
+
+      compositor->tty = meta_tty_create (compositor, 0);
+    }
 
   g_queue_init (&compositor->frame_callbacks);
 

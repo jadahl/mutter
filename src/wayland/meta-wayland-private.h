@@ -108,6 +108,8 @@ struct _MetaWaylandCompositor
   struct wl_shm *wayland_shm;
   struct wl_event_loop *wayland_loop;
   GMainLoop *init_loop;
+  GIOChannel *sigusr_channel;
+  GMainLoop *sigusr_loop;
   ClutterActor *stage;
   int drm_fd;
   struct tty *tty;
