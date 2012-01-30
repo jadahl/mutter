@@ -1468,10 +1468,15 @@ event_emission_hook_cb (GSignalInvocationHint *ihint,
 static void
 on_vt_enter (MetaWaylandCompositor *compositor)
 {
+  ClutterBackend *clutter_backend = clutter_get_default_backend ();
+  CoglContext *cogl_context = clutter_backend_get_cogl_context (clutter_backend);
+  CoglDisplay *cogl_display = cogl_context_get_display (cogl_context);
+
   meta_tty_enter_vt (compositor->tty);
 
   if (drmSetMaster (compositor->drm_fd))
     g_critical ("failed to set master: %m\n");
+  cogl_kms_display_queue_modes_reset (cogl_display);
   clutter_actor_queue_redraw (compositor->stage);
   clutter_evdev_reclaim_devices ();
 
