@@ -583,6 +583,7 @@ meta_screen_create_guard_window (Display *xdisplay, MetaScreen *screen)
   XSetWindowAttributes attributes;
   Window guard_window;
   gulong create_serial;
+  MetaStackWindow stack_window;
   
   attributes.event_mask = NoEventMask;
   attributes.override_redirect = True;
@@ -604,12 +605,14 @@ meta_screen_create_guard_window (Display *xdisplay, MetaScreen *screen)
 		   CopyFromParent, /* visual */
 		   CWEventMask|CWOverrideRedirect|CWBackPixel,
 		   &attributes);
+  stack_window.any.type = META_WINDOW_CLIENT_TYPE_X11;
+  stack_window.x11.xwindow = guard_window;
   meta_stack_tracker_record_add (screen->stack_tracker,
-                                 guard_window,
+                                 &stack_window,
                                  create_serial);
 
   meta_stack_tracker_record_lower (screen->stack_tracker,
-                                   guard_window,
+                                   &stack_window,
                                    XNextRequest (xdisplay));
   XLowerWindow (xdisplay, guard_window);
   XMapWindow (xdisplay, guard_window);
@@ -1879,12 +1882,15 @@ meta_screen_tile_preview_update_timeout (gpointer data)
     {
       Window xwindow;
       gulong create_serial;
+      MetaStackWindow stack_window;
 
       screen->tile_preview = meta_tile_preview_new (screen->number);
       xwindow = meta_tile_preview_get_xwindow (screen->tile_preview,
                                                &create_serial);
+      stack_window.any.type = META_WINDOW_CLIENT_TYPE_X11;
+      stack_window.x11.xwindow = xwindow;
       meta_stack_tracker_record_add (screen->stack_tracker,
-                                     xwindow,
+                                     &stack_window,
                                      create_serial);
     }
 

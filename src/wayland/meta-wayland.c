@@ -743,11 +743,6 @@ ensure_surface_window (MetaWaylandSurface *surface)
        * surface... */
       g_assert (surface->actor);
 
-      window_actor =
-        CLUTTER_ACTOR (meta_window_get_compositor_private (surface->window));
-      meta_window_actor_show (META_WINDOW_ACTOR (window_actor),
-                              META_COMP_EFFECT_CREATE);
-
       /* If the MetaWindow becomes unmanaged (surface->actor will be freed in
        * this case) we need to make sure to clear our ->actor and ->window
        * pointers. */
@@ -1317,6 +1312,9 @@ event_cb (ClutterActor *stage,
                                               (struct wl_surface *) surface,
                                               event->any.time);
           wl_data_device_set_keyboard_focus (device);
+
+          /* Hack to test wayland surface stacking */
+          meta_window_raise (surface->window);
         }
     }
 
