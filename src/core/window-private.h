@@ -73,11 +73,6 @@ typedef enum {
 
 #define NUMBER_OF_QUEUES 3
 
-typedef enum {
-  META_WINDOW_CLIENT_TYPE_WAYLAND,
-  META_WINDOW_CLIENT_TYPE_X11
-} MetaWindowClientType;
-
 struct _MetaWindow
 {
   GObject parent_instance;

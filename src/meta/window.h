@@ -51,6 +51,11 @@ typedef enum
   META_WINDOW_OVERRIDE_OTHER
 } MetaWindowType;
 
+typedef enum {
+  META_WINDOW_CLIENT_TYPE_WAYLAND,
+  META_WINDOW_CLIENT_TYPE_X11
+} MetaWindowClientType;
+
 typedef enum
 {
   META_MAXIMIZE_HORIZONTAL = 1 << 0,
@@ -81,6 +86,7 @@ MetaScreen *meta_window_get_screen (MetaWindow *window);
 MetaDisplay *meta_window_get_display (MetaWindow *window);
 Window meta_window_get_xwindow (MetaWindow *window);
 MetaWindowType meta_window_get_window_type (MetaWindow *window);
+MetaWindowClientType meta_window_get_client_type (MetaWindow *window);
 Atom meta_window_get_window_type_atom (MetaWindow *window);
 MetaWorkspace *meta_window_get_workspace (MetaWindow *window);
 int      meta_window_get_monitor (MetaWindow *window);

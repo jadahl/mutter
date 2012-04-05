@@ -10332,6 +10332,12 @@ meta_window_get_window_type (MetaWindow *window)
   return window->type;
 }
 
+MetaWindowClientType
+meta_window_get_client_type (MetaWindow *window)
+{
+  return window->client_type;
+}
+
 /**
  * meta_window_get_window_type_atom: (skip)
  * @window: a #MetaWindow
