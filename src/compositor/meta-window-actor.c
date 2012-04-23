@@ -40,7 +40,6 @@ static guint signals[LAST_SIGNAL] = {0};
 struct _MetaWindowActorPrivate
 {
   MetaWindow       *window;
-  Window            xwindow;
   MetaScreen       *screen;
 
   ClutterActor     *actor;
@@ -125,7 +124,6 @@ enum
 {
   PROP_META_WINDOW = 1,
   PROP_META_SCREEN,
-  PROP_X_WINDOW,
   PROP_NO_SHADOW,
   PROP_SHADOW_CLASS
 };
@@ -194,18 +192,6 @@ meta_window_actor_class_init (MetaWindowActorClass *klass)
                                    PROP_META_SCREEN,
                                    pspec);
 
-  pspec = g_param_spec_ulong ("x-window",
-			      "Window",
-			      "Window",
-			      0,
-			      G_MAXULONG,
-			      0,
-			      G_PARAM_READWRITE | G_PARAM_CONSTRUCT);
-
-  g_object_class_install_property (object_class,
-                                   PROP_X_WINDOW,
-                                   pspec);
-
   pspec = g_param_spec_boolean ("no-shadow",
                                 "No shadow",
                                 "Do not add shaddow to this window",
@@ -259,22 +245,15 @@ window_decorated_notify (MetaWindow *mw,
 {
   MetaWindowActor        *self     = META_WINDOW_ACTOR (data);
   MetaWindowActorPrivate *priv     = self->priv;
-  MetaFrame              *frame    = meta_window_get_frame (mw);
   MetaScreen             *screen   = priv->screen;
   MetaDisplay            *display  = meta_screen_get_display (screen);
   Display                *xdisplay = meta_display_get_xdisplay (display);
-  Window                  new_xwindow;
 
   /*
    * Basically, we have to reconstruct the the internals of this object
    * from scratch, as everything has changed.
    */
   priv->redecorating = TRUE;
-
-  if (frame)
-    new_xwindow = meta_frame_get_xwindow (frame);
-  else
-    new_xwindow = meta_window_get_xwindow (mw);
 
   meta_window_actor_detach (self);
 
@@ -292,8 +271,6 @@ window_decorated_notify (MetaWindow *mw,
 
   g_free (priv->desc);
   priv->desc = NULL;
-
-  priv->xwindow = new_xwindow;
 
   /*
    * Recreate the contents.
@@ -316,10 +293,16 @@ meta_window_actor_constructed (GObject *object)
   MetaWindowActorPrivate *priv     = self->priv;
   MetaScreen             *screen   = priv->screen;
   MetaDisplay            *display  = meta_screen_get_display (screen);
-  Window                  xwindow  = priv->xwindow;
   MetaWindow             *window   = priv->window;
+  MetaFrame              *frame    = meta_window_get_frame (window);
   Display                *xdisplay = meta_display_get_xdisplay (display);
   XRenderPictFormat      *format;
+  Window                  xwindow;
+
+  if (frame)
+    xwindow = meta_frame_get_xwindow (frame);
+  else
+    xwindow = meta_window_get_xwindow (window);
 
   priv->damage = XDamageCreate (xdisplay, xwindow,
                                 XDamageReportBoundingBox);
@@ -472,9 +455,6 @@ meta_window_actor_set_property (GObject      *object,
     case PROP_META_SCREEN:
       priv->screen = g_value_get_pointer (value);
       break;
-    case PROP_X_WINDOW:
-      priv->xwindow = g_value_get_ulong (value);
-      break;
     case PROP_NO_SHADOW:
       {
         gboolean newv = g_value_get_boolean (value);
@@ -521,9 +501,6 @@ meta_window_actor_get_property (GObject      *object,
       break;
     case PROP_META_SCREEN:
       g_value_set_pointer (value, priv->screen);
-      break;
-    case PROP_X_WINDOW:
-      g_value_set_ulong (value, priv->xwindow);
       break;
     case PROP_NO_SHADOW:
       g_value_set_boolean (value, priv->no_shadow);
@@ -789,19 +766,6 @@ meta_window_actor_has_shadow (MetaWindowActor *self)
 }
 
 /**
- * meta_window_actor_get_x_window: (skip)
- *
- */
-Window
-meta_window_actor_get_x_window (MetaWindowActor *self)
-{
-  if (!self)
-    return None;
-
-  return self->priv->xwindow;
-}
-
-/**
  * meta_window_actor_get_meta_window:
  *
  * Gets the #MetaWindow object that the the #MetaWindowActor is displaying
@@ -855,12 +819,6 @@ const char *meta_window_actor_get_description (MetaWindowActor *self)
    */
   if (self->priv->window)
     return meta_window_get_description (self->priv->window);
-
-  if (G_UNLIKELY (self->priv->desc == NULL))
-    {
-      self->priv->desc = g_strdup_printf ("Override Redirect (0x%x)",
-                                         (guint) self->priv->xwindow);
-    }
 
   return self->priv->desc;
 }
@@ -1229,10 +1187,16 @@ void
 meta_window_actor_set_redirected (MetaWindowActor *self, gboolean state)
 {
   MetaWindow *metaWindow = meta_window_actor_get_meta_window (self);
+  MetaFrame *frame = meta_window_get_frame (metaWindow);
   MetaDisplay *display = meta_window_get_display (metaWindow);
 
   Display *xdisplay = meta_display_get_xdisplay (display);
-  Window  xwin = meta_window_actor_get_x_window (self);
+  Window  xwin;
+
+  if (frame)
+    xwin = meta_frame_get_xwindow (frame);
+  else
+    xwin = meta_window_get_xwindow (metaWindow);
 
   if (state)
     {
@@ -1479,20 +1443,9 @@ meta_window_actor_new (MetaWindow *window)
   MetaCompScreen         *info = meta_screen_get_compositor_data (screen);
   MetaWindowActor        *self;
   MetaWindowActorPrivate *priv;
-  MetaFrame		 *frame;
-  Window		  top_window;
-
-  frame = meta_window_get_frame (window);
-  if (frame)
-    top_window = meta_frame_get_xwindow (frame);
-  else
-    top_window = meta_window_get_xwindow (window);
-
-  meta_verbose ("add window: Meta %p, xwin 0x%x\n", window, (guint)top_window);
 
   self = g_object_new (META_TYPE_WINDOW_ACTOR,
                        "meta-window",         window,
-                       "x-window",            top_window,
                        "meta-screen",         screen,
                        NULL);
 
@@ -1806,14 +1759,21 @@ check_needs_pixmap (MetaWindowActor *self)
   MetaDisplay         *display  = meta_screen_get_display (screen);
   Display             *xdisplay = meta_display_get_xdisplay (display);
   MetaCompScreen      *info     = meta_screen_get_compositor_data (screen);
+  MetaWindow          *window   = meta_window_actor_get_meta_window (self);
+  MetaFrame           *frame    = meta_window_get_frame (window);
   MetaCompositor      *compositor;
-  Window               xwindow  = priv->xwindow;
+  Window               xwindow;
 
   if (!priv->needs_pixmap)
     return;
 
   if (!priv->mapped)
     return;
+
+  if (frame)
+    xwindow = meta_frame_get_xwindow (frame);
+  else
+    xwindow = meta_window_get_xwindow (window);
 
   if (xwindow == meta_screen_get_xroot (screen) ||
       xwindow == clutter_x11_get_stage_window (CLUTTER_STAGE (info->stage)))
