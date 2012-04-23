@@ -347,7 +347,6 @@ meta_window_actor_dispose (GObject *object)
   MetaScreen             *screen;
   MetaDisplay            *display;
   Display                *xdisplay;
-  MetaCompScreen         *info;
 
   if (priv->disposed)
     return;
@@ -357,7 +356,6 @@ meta_window_actor_dispose (GObject *object)
   screen   = priv->screen;
   display  = meta_screen_get_display (screen);
   xdisplay = meta_display_get_xdisplay (display);
-  info     = meta_screen_get_compositor_data (screen);
 
   meta_window_actor_detach (self);
 
@@ -397,8 +395,6 @@ meta_window_actor_dispose (GObject *object)
 
       priv->damage = None;
     }
-
-  info->windows = g_list_remove (info->windows, (gconstpointer) self);
 
   if (priv->window)
     {
@@ -1201,7 +1197,6 @@ void
 meta_window_actor_destroy (MetaWindowActor *self)
 {
   MetaWindow	      *window;
-  MetaCompScreen      *info;
   MetaWindowActorPrivate *priv;
   MetaWindowType window_type;
 
@@ -1209,14 +1204,6 @@ meta_window_actor_destroy (MetaWindowActor *self)
 
   window = priv->window;
   window_type = meta_window_get_window_type (window);
-  meta_window_set_compositor_private (window, NULL);
-
-  /*
-   * We remove the window from internal lookup hashes and thus any other
-   * unmap events etc fail
-   */
-  info = meta_screen_get_compositor_data (priv->screen);
-  info->windows = g_list_remove (info->windows, (gconstpointer) self);
 
   if (window_type == META_WINDOW_DROPDOWN_MENU ||
       window_type == META_WINDOW_POPUP_MENU ||
@@ -1421,8 +1408,6 @@ meta_window_actor_unmaximize (MetaWindowActor   *self,
 MetaWindowActor *
 meta_window_actor_new (MetaWindow *window)
 {
-  MetaScreen	 	 *screen = meta_window_get_screen (window);
-  MetaCompScreen         *info = meta_screen_get_compositor_data (screen);
   MetaWindowActor        *self;
   MetaWindowActorPrivate *priv;
 
@@ -1440,18 +1425,6 @@ meta_window_actor_new (MetaWindow *window)
     meta_window_actor_queue_create_pixmap (self);
 
   meta_window_actor_sync_actor_position (self);
-
-  /* Hang our compositor window state off the MetaWindow for fast retrieval */
-  meta_window_set_compositor_private (window, G_OBJECT (self));
-
-  clutter_actor_add_child (info->window_group,
-                           CLUTTER_ACTOR (self));
-  clutter_actor_hide (CLUTTER_ACTOR (self));
-
-  /* Initial position in the stack is arbitrary; stacking will be synced
-   * before we first paint.
-   */
-  info->windows = g_list_append (info->windows, self);
 
   return self;
 }

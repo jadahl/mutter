@@ -84,10 +84,22 @@ add_win (MetaWindow *window)
 {
   MetaScreen		*screen = meta_window_get_screen (window);
   MetaCompScreen        *info = meta_screen_get_compositor_data (screen);
+  MetaWindowActor       *actor;
 
   g_return_if_fail (info != NULL);
 
-  meta_window_actor_new (window);
+  actor = meta_window_actor_new (window);
+
+  window->actors = g_slist_append (window->actors, actor);
+  window->core_actor = actor;
+
+  clutter_actor_add_child (info->window_group, CLUTTER_ACTOR (actor));
+  clutter_actor_hide (CLUTTER_ACTOR (actor));
+
+  /* Initial position in the stack is arbitrary; stacking will be synced
+   * before we first paint.
+   */
+  info->windows = g_list_append (info->windows, actor);
 
   sync_actor_stacking (info);
 }
@@ -97,16 +109,13 @@ process_damage (MetaCompositor     *compositor,
                 XDamageNotifyEvent *event,
                 MetaWindow         *window)
 {
-  MetaWindowActor *window_actor;
+  GSList *iter;
 
   if (window == NULL)
     return;
 
-  window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
-  if (window_actor == NULL)
-    return;
-
-  meta_window_actor_process_damage (window_actor, event);
+  for (iter = window->actors; iter != NULL; iter = iter->next)
+    meta_window_actor_process_damage (META_WINDOW_ACTOR (iter->data), event);
 }
 
 static void
@@ -114,8 +123,6 @@ process_property_notify (MetaCompositor	*compositor,
                          XPropertyEvent *event,
                          MetaWindow     *window)
 {
-  MetaWindowActor *window_actor;
-
   if (event->atom == compositor->atom_x_root_pixmap)
     {
       GSList *l;
@@ -131,22 +138,12 @@ process_property_notify (MetaCompositor	*compositor,
         }
     }
 
-  if (window == NULL)
-    return;
-
-  window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
-  if (window_actor == NULL)
+  if (window == NULL || window->core_actor == NULL)
     return;
 
   /* Check for the opacity changing */
   if (event->atom == compositor->atom_net_wm_window_opacity)
-    {
-      meta_window_actor_update_opacity (window_actor);
-      DEBUG_TRACE ("process_property_notify: net_wm_window_opacity\n");
-      return;
-    }
-
-  DEBUG_TRACE ("process_property_notify: unknown\n");
+    meta_window_actor_update_opacity (window->core_actor);
 }
 
 static Window
@@ -660,27 +657,31 @@ void
 meta_compositor_remove_window (MetaCompositor *compositor,
                                MetaWindow     *window)
 {
-  MetaWindowActor         *window_actor     = NULL;
   MetaScreen *screen;
   MetaCompScreen *info;
+  GSList *iter;
 
   DEBUG_TRACE ("meta_compositor_remove_window\n");
-  window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
-  if (!window_actor)
-    return;
 
   screen = meta_window_get_screen (window);
   info = meta_screen_get_compositor_data (screen);
 
-  if (window_actor == info->unredirected_window)
-    {
-      meta_window_actor_set_redirected (window_actor, TRUE);
-      meta_shape_cow_for_window (meta_window_get_screen (meta_window_actor_get_meta_window (info->unredirected_window)),
-                                 NULL);
-      info->unredirected_window = NULL;
-    }
+  window->core_actor = NULL;
 
-  meta_window_actor_destroy (window_actor);
+  for (iter = window->actors; iter != NULL; iter = iter->next)
+    {
+      MetaWindowActor *actor = META_WINDOW_ACTOR (iter->data);
+
+      if (actor == info->unredirected_window)
+        {
+          meta_window_actor_set_redirected (info->unredirected_window, TRUE);
+          meta_shape_cow_for_window (meta_window_get_screen (window), NULL);
+          info->unredirected_window = NULL;
+        }
+
+      meta_window_actor_destroy (actor);
+      info->windows = g_list_remove (info->windows, (gconstpointer) actor);
+    }
 }
 
 void
@@ -712,9 +713,10 @@ void
 meta_compositor_window_shape_changed (MetaCompositor *compositor,
                                       MetaWindow     *window)
 {
-  MetaWindowActor *window_actor;
-  window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
-  meta_window_actor_update_shape (window_actor);
+  GSList *iter;
+
+  for (iter = window->actors; iter != NULL; iter = iter->next)
+    meta_window_actor_update_shape (META_WINDOW_ACTOR (iter->data));
 }
 
 /**
@@ -816,12 +818,8 @@ meta_compositor_show_window (MetaCompositor *compositor,
 			     MetaWindow	    *window,
                              MetaCompEffect  effect)
 {
-  MetaWindowActor *window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
-  DEBUG_TRACE ("meta_compositor_show_window\n");
-  if (!window_actor)
-    return;
-
-  meta_window_actor_show (window_actor, effect);
+  if (window->core_actor != NULL)
+    meta_window_actor_show (window->core_actor, effect);
 }
 
 void
@@ -829,12 +827,8 @@ meta_compositor_hide_window (MetaCompositor *compositor,
                              MetaWindow     *window,
                              MetaCompEffect  effect)
 {
-  MetaWindowActor *window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
-  DEBUG_TRACE ("meta_compositor_hide_window\n");
-  if (!window_actor)
-    return;
-
-  meta_window_actor_hide (window_actor, effect);
+  if (window->core_actor != NULL)
+    meta_window_actor_hide (window->core_actor, effect);
 }
 
 void
@@ -843,12 +837,8 @@ meta_compositor_maximize_window (MetaCompositor    *compositor,
 				 MetaRectangle	   *old_rect,
 				 MetaRectangle	   *new_rect)
 {
-  MetaWindowActor *window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
-  DEBUG_TRACE ("meta_compositor_maximize_window\n");
-  if (!window_actor)
-    return;
-
-  meta_window_actor_maximize (window_actor, old_rect, new_rect);
+  if (window->core_actor != NULL)
+    meta_window_actor_maximize (window->core_actor, old_rect, new_rect);
 }
 
 void
@@ -857,12 +847,8 @@ meta_compositor_unmaximize_window (MetaCompositor    *compositor,
 				   MetaRectangle     *old_rect,
 				   MetaRectangle     *new_rect)
 {
-  MetaWindowActor *window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
-  DEBUG_TRACE ("meta_compositor_unmaximize_window\n");
-  if (!window_actor)
-    return;
-
-  meta_window_actor_unmaximize (window_actor, old_rect, new_rect);
+  if (window->core_actor != NULL)
+    meta_window_actor_unmaximize (window->core_actor, old_rect, new_rect);
 }
 
 void
@@ -1025,7 +1011,7 @@ meta_compositor_sync_stack (MetaCompositor  *compositor,
       while (stack)
         {
           stack_window = stack->data;
-          stack_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (stack_window));
+          stack_actor = stack_window->core_actor;
           if (!stack_actor)
             {
               meta_verbose ("Failed to find corresponding MetaWindowActor "
@@ -1074,41 +1060,24 @@ void
 meta_compositor_window_mapped (MetaCompositor *compositor,
                                MetaWindow     *window)
 {
-  MetaWindowActor *window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
-  DEBUG_TRACE ("meta_compositor_window_mapped\n");
-  if (!window_actor)
-    return;
-
-  meta_window_actor_mapped (window_actor);
+  if (window->core_actor != NULL)
+    meta_window_actor_mapped (window->core_actor);
 }
 
 void
 meta_compositor_window_unmapped (MetaCompositor *compositor,
                                  MetaWindow     *window)
 {
-  MetaWindowActor *window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
-  DEBUG_TRACE ("meta_compositor_window_unmapped\n");
-  if (!window_actor)
-    return;
-
-  meta_window_actor_unmapped (window_actor);
+  if (window->core_actor != NULL)
+    meta_window_actor_unmapped (window->core_actor);
 }
 
 void
 meta_compositor_sync_window_geometry (MetaCompositor *compositor,
 				      MetaWindow *window)
 {
-  MetaWindowActor *window_actor = META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
-  MetaScreen      *screen = meta_window_get_screen (window);
-  MetaCompScreen  *info = meta_screen_get_compositor_data (screen);
-
-  DEBUG_TRACE ("meta_compositor_sync_window_geometry\n");
-  g_return_if_fail (info);
-
-  if (!window_actor)
-    return;
-
-  meta_window_actor_sync_actor_position (window_actor);
+  if (window->core_actor != NULL)
+    meta_window_actor_sync_actor_position (window->core_actor);
 }
 
 void

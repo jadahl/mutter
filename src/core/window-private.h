@@ -406,7 +406,10 @@ struct _MetaWindow
   /* maintained by group.c */
   MetaGroup *group;
 
-  GObject *compositor_private;
+  GSList *actors;
+
+  /* The core actor is the one in the window group. */
+  MetaWindowActor *core_actor;
 
   /* Focused window that is (directly or indirectly) attached to this one */
   MetaWindow *attached_focus_window;

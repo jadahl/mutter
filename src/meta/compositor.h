@@ -29,6 +29,7 @@
 #include <meta/boxes.h>
 #include <meta/window.h>
 #include <meta/workspace.h>
+#include <meta/meta-window-actor.h>
 
 /**
  * MetaCompEffect:
