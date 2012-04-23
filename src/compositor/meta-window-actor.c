@@ -36,6 +36,7 @@ enum {
 
 static guint signals[LAST_SIGNAL] = {0};
 
+static void meta_window_actor_queue_create_pixmap (MetaWindowActor *self);
 
 struct _MetaWindowActorPrivate
 {
@@ -227,6 +228,9 @@ meta_window_actor_init (MetaWindowActor *self)
 						   MetaWindowActorPrivate);
   priv->opacity = 0xff;
   priv->shadow_class = NULL;
+
+  priv->last_width = -1;
+  priv->last_height = -1;
 }
 
 static void
@@ -327,7 +331,7 @@ meta_window_actor_constructed (GObject *object)
   else
     {
       /*
-       * This is the case where existing window is gaining/loosing frame.
+       * This is the case where existing window is gaining/losing frame.
        * Just ensure the actor is top most (i.e., above shadow).
        */
       clutter_actor_set_child_above_sibling (CLUTTER_ACTOR (self), priv->actor, NULL);
@@ -335,6 +339,12 @@ meta_window_actor_constructed (GObject *object)
 
   meta_window_actor_update_opacity (self);
   meta_window_actor_update_shape (self);
+
+  priv->mapped = meta_window_toplevel_is_mapped (priv->window);
+  if (priv->mapped)
+    meta_window_actor_queue_create_pixmap (self);
+
+  meta_window_actor_sync_actor_position (self);
 
   G_OBJECT_CLASS (meta_window_actor_parent_class)->constructed(object);
 }
@@ -1408,25 +1418,9 @@ meta_window_actor_unmaximize (MetaWindowActor   *self,
 MetaWindowActor *
 meta_window_actor_new (MetaWindow *window)
 {
-  MetaWindowActor        *self;
-  MetaWindowActorPrivate *priv;
-
-  self = g_object_new (META_TYPE_WINDOW_ACTOR,
+  return g_object_new (META_TYPE_WINDOW_ACTOR,
                        "meta-window", window,
                        NULL);
-
-  priv = self->priv;
-
-  priv->last_width = -1;
-  priv->last_height = -1;
-
-  priv->mapped = meta_window_toplevel_is_mapped (priv->window);
-  if (priv->mapped)
-    meta_window_actor_queue_create_pixmap (self);
-
-  meta_window_actor_sync_actor_position (self);
-
-  return self;
 }
 
 void
