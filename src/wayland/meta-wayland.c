@@ -1406,10 +1406,63 @@ event_cb (ClutterActor *stage,
   return FALSE;
 }
 
+static gboolean
+event_emission_hook_cb (GSignalInvocationHint *ihint,
+                        guint n_param_values,
+                        const GValue *param_values,
+                        gpointer data)
+{
+  MetaWaylandCompositor *compositor = data;
+  ClutterActor *actor;
+  ClutterEvent *event;
+
+  g_return_val_if_fail (n_param_values == 2, FALSE);
+
+  actor = g_value_get_object (param_values + 0);
+  event = g_value_get_boxed (param_values + 1);
+
+  if (actor == NULL)
+    return TRUE /* stay connected */;
+
+  /* If this event belongs to the corresponding grab for this event
+   * type then the captured-event signal won't be emitted so we have
+   * to manually forward it on */
+
+  switch (event->type)
+    {
+      /* Pointer events */
+    case CLUTTER_MOTION:
+    case CLUTTER_ENTER:
+    case CLUTTER_LEAVE:
+    case CLUTTER_BUTTON_PRESS:
+    case CLUTTER_BUTTON_RELEASE:
+    case CLUTTER_SCROLL:
+      if (actor == clutter_get_pointer_grab ())
+        event_cb (clutter_actor_get_stage (actor),
+                  event,
+                  compositor);
+      break;
+
+      /* Keyboard events */
+    case CLUTTER_KEY_PRESS:
+    case CLUTTER_KEY_RELEASE:
+      if (actor == clutter_get_keyboard_grab ())
+        event_cb (clutter_actor_get_stage (actor),
+                  event,
+                  compositor);
+
+    default:
+      break;
+    }
+
+  return TRUE /* stay connected */;
+}
+
 void
 meta_wayland_init (void)
 {
   MetaWaylandCompositor *compositor = &_meta_wayland_compositor;
+  guint event_signal;
 
   memset (compositor, 0, sizeof (MetaWaylandCompositor));
 
@@ -1459,8 +1512,18 @@ meta_wayland_init (void)
                           G_CALLBACK (paint_finished_cb), compositor);
   g_signal_connect (compositor->stage, "destroy",
                     G_CALLBACK (stage_destroy_cb), NULL);
-  g_signal_connect (compositor->stage, "event",
+  g_signal_connect (compositor->stage, "captured-event",
                     G_CALLBACK (event_cb), compositor);
+  /* If something sets a grab on an actor then the captured event
+   * signal won't get emitted but we still want to see these events so
+   * we can update the cursor position. To make sure we see all events
+   * we also install an emission hook on the event signal */
+  event_signal = g_signal_lookup ("event", CLUTTER_TYPE_STAGE);
+  g_signal_add_emission_hook (event_signal,
+                              0 /* detail */,
+                              event_emission_hook_cb,
+                              compositor, /* hook_data */
+                              NULL /* data_destroy */);
 
   wl_data_device_manager_init (compositor->wayland_display);
 
