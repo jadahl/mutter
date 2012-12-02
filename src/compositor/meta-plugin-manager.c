@@ -437,7 +437,9 @@ meta_plugin_manager_xevent_filter (MetaPluginManager *plugin_mgr,
                                    XEvent            *xev)
 {
   GList *l;
+#ifndef HAVE_WAYLAND
   gboolean have_plugin_xevent_func;
+#endif
 
   if (!plugin_mgr)
     return FALSE;
@@ -460,7 +462,9 @@ meta_plugin_manager_xevent_filter (MetaPluginManager *plugin_mgr,
    *  of the plugin interface right now to achieve this; the way it is
    *  now works fine in practice.
    */
+#ifndef HAVE_WAYLAND
   have_plugin_xevent_func = FALSE;
+#endif
 
   while (l)
     {
@@ -469,7 +473,9 @@ meta_plugin_manager_xevent_filter (MetaPluginManager *plugin_mgr,
 
       if (klass->xevent_filter)
         {
+#ifndef HAVE_WAYLAND
           have_plugin_xevent_func = TRUE;
+#endif
           if (klass->xevent_filter (plugin, xev) == TRUE)
             return TRUE;
         }

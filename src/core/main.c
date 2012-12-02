@@ -366,10 +366,12 @@ signal_handler (int signum)
       switch (signum)
         {
         case SIGTERM:
-          write (signal_pipe_fds[1], "T", 1);
+          if (write (signal_pipe_fds[1], "T", 1) != 1)
+            abort();
           break;
         case SIGCHLD:
-          write (signal_pipe_fds[1], "C", 1);
+          if (write (signal_pipe_fds[1], "C", 1) != 1)
+            abort();
           break;
         default:
           break;

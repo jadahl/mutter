@@ -981,6 +981,7 @@ typedef struct
   XWindowAttributes	attrs;
 } WindowInfo;
 
+#ifndef HAVE_WAYLAND
 static GList *
 list_windows (MetaScreen *screen)
 {
@@ -1027,7 +1028,6 @@ list_windows (MetaScreen *screen)
  * initialization, when we run as a wayland compositor we can rely on
  * xwayland notifying us of all top level windows so we create
  * MetaWindows when we get those notifications. */
-#ifndef HAVE_WAYLAND
 void
 meta_screen_manage_all_windows (MetaScreen *screen)
 {
