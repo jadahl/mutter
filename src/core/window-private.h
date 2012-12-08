@@ -53,6 +53,7 @@
  * (meta-wayland-private.h which typedefs MetaWaylandSurface
  *  also includes window-private.h) */
 #ifndef HAVE_META_WAYLAND_SURFACE_TYPE
+#define HAVE_META_WAYLAND_SURFACE_TYPE
 typedef struct _MetaWaylandSurface MetaWaylandSurface;
 #endif
 

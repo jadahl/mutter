@@ -23,6 +23,8 @@
 #include <clutter/clutter.h>
 #include <wayland-server.h>
 
+#include "meta-wayland-private.h"
+
 G_BEGIN_DECLS
 
 #define META_WAYLAND_TYPE_STAGE                                         \
@@ -80,10 +82,10 @@ void              meta_wayland_stage_set_cursor_position    (MetaWaylandStage *s
 
 void              meta_wayland_stage_set_default_cursor     (MetaWaylandStage *self);
 
-void              meta_wayland_stage_set_cursor_from_buffer (MetaWaylandStage *self,
-                                                             struct wl_buffer *buffer,
-                                                             int               hotspot_x,
-                                                             int               hotspot_y);
+void              meta_wayland_stage_set_cursor_from_buffer (MetaWaylandStage  *self,
+                                                             MetaWaylandBuffer *buffer,
+                                                             int                hotspot_x,
+                                                             int                hotspot_y);
 
 void              meta_wayland_stage_set_invisible_cursor   (MetaWaylandStage *self);
 

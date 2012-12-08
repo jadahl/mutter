@@ -115,9 +115,7 @@ wayland_event_source_new (struct wl_event_loop *loop)
 }
 
 static void
-buffer_destroy_callback (struct wl_listener *listener,
-                         struct wl_resource *resource,
-                         guint32 time)
+buffer_destroy_callback (struct wl_listener *listener, void *data)
 {
   MetaWaylandBuffer *buffer =
     container_of (listener, MetaWaylandBuffer,
@@ -144,8 +142,8 @@ meta_wayland_buffer_new (struct wl_buffer *wayland_buffer)
   buffer->wayland_buffer = wayland_buffer;
   buffer->surfaces_attached_to = NULL;
 
-  buffer->buffer_destroy_listener.func = buffer_destroy_callback;
-  wl_list_insert (wayland_buffer->resource.destroy_listener_list.prev,
+  buffer->buffer_destroy_listener.notify = buffer_destroy_callback;
+  wl_list_insert (wayland_buffer->resource.destroy_signal.listener_list.prev,
                   &buffer->buffer_destroy_listener.link);
 
   return buffer;
@@ -158,7 +156,7 @@ meta_wayland_buffer_free (MetaWaylandBuffer *buffer)
 
   if (buffer->wayland_buffer)
     {
-      buffer->wayland_buffer->user_data = NULL;
+      buffer->wayland_buffer->resource.data = NULL;
 
       wl_list_remove (&buffer->buffer_destroy_listener.link);
     }
@@ -174,58 +172,10 @@ meta_wayland_buffer_free (MetaWaylandBuffer *buffer)
 }
 
 static void
-shm_buffer_created (struct wl_buffer *wayland_buffer)
-{
-  /* We ignore the buffer until it is attached to a surface */
-  wayland_buffer->user_data = NULL;
-}
-
-static void
-shm_buffer_damaged (struct wl_buffer *wayland_buffer,
-		    gint32 x,
-                    gint32 y,
-                    gint32 width,
-                    gint32 height)
-{
-  MetaWaylandBuffer *buffer = wayland_buffer->user_data;
-  GList *l;
-
-  /* We only have an associated MetaWaylandBuffer once the wayland buffer has
-   * been attached to a surface. */
-  if (!buffer)
-    return;
-
-  for (l = buffer->surfaces_attached_to; l; l = l->next)
-    {
-      MetaWaylandSurface *surface = l->data;
-      ClutterWaylandSurface *surface_actor =
-        CLUTTER_WAYLAND_SURFACE (surface->actor);
-      clutter_wayland_surface_damage_buffer (surface_actor,
-                                             wayland_buffer,
-                                             x, y, width, height);
-    }
-}
-
-static void
-shm_buffer_destroyed (struct wl_buffer *wayland_buffer)
-{
-  /* We only have an associated MetaWaylandBuffer once the wayland buffer has
-   * been attached to a surface. */
-  if (wayland_buffer->user_data)
-    meta_wayland_buffer_free ((MetaWaylandBuffer *)wayland_buffer->user_data);
-}
-
-const static struct wl_shm_callbacks shm_callbacks = {
-  shm_buffer_created,
-  shm_buffer_damaged,
-  shm_buffer_destroyed
-};
-
-static void
 meta_wayland_surface_destroy (struct wl_client *wayland_client,
-                     struct wl_resource *wayland_resource)
+                              struct wl_resource *wayland_resource)
 {
-  wl_resource_destroy (wayland_resource, get_time ());
+  wl_resource_destroy (wayland_resource);
 }
 
 static void
@@ -235,8 +185,8 @@ meta_wayland_surface_detach_buffer (MetaWaylandSurface *surface)
 
   if (buffer)
     {
-      wl_resource_queue_event(&buffer->wayland_buffer->resource,
-                              WL_BUFFER_RELEASE);
+      wl_resource_queue_event (&buffer->wayland_buffer->resource,
+                               WL_BUFFER_RELEASE);
 
       buffer->surfaces_attached_to =
         g_list_remove (buffer->surfaces_attached_to, surface);
@@ -253,7 +203,7 @@ meta_wayland_surface_attach_buffer (struct wl_client *wayland_client,
                                     gint32 dx, gint32 dy)
 {
   struct wl_buffer *wayland_buffer = wayland_buffer_resource->data;
-  MetaWaylandBuffer *buffer = wayland_buffer->user_data;
+  MetaWaylandBuffer *buffer = wayland_buffer->resource.data;
   MetaWaylandSurface *surface = wayland_surface_resource->data;
   ClutterWaylandSurface *surface_actor;
 
@@ -269,7 +219,7 @@ meta_wayland_surface_attach_buffer (struct wl_client *wayland_client,
   if (!buffer)
     {
       buffer = meta_wayland_buffer_new (wayland_buffer);
-      wayland_buffer->user_data = buffer;
+      wayland_buffer->resource.data = buffer;
     }
 
   g_return_if_fail (g_list_find (buffer->surfaces_attached_to, surface) == NULL);
@@ -370,9 +320,7 @@ const struct wl_surface_interface meta_wayland_surface_interface = {
 void
 meta_wayland_compositor_repick (MetaWaylandCompositor *compositor)
 {
-  meta_wayland_input_device_repick (compositor->input_device,
-                                    get_time (),
-                                    NULL);
+  meta_wayland_seat_repick (compositor->seat, NULL);
 }
 
 void
@@ -397,12 +345,8 @@ meta_wayland_compositor_set_input_focus (MetaWaylandCompositor *compositor,
         }
     }
 
-  wl_input_device_set_keyboard_focus ((struct wl_input_device *)
-                                      compositor->input_device,
-                                      (struct wl_surface *) surface,
-                                      get_time ());
-  wl_data_device_set_keyboard_focus ((struct wl_input_device *)
-                                      compositor->input_device);
+  wl_keyboard_set_focus (compositor->seat->seat.keyboard, surface);
+  wl_data_device_set_keyboard_focus (&compositor->seat->seat);
 }
 
 static void
@@ -443,7 +387,7 @@ meta_wayland_surface_free (MetaWaylandSurface *surface)
 
   if (compositor->implicit_grab_surface == (struct wl_surface *) surface)
     compositor->implicit_grab_surface =
-      ((struct wl_input_device *) compositor->input_device)->current;
+      ((struct wl_seat *) compositor->seat)->pointer->current;
 }
 
 static void
@@ -454,9 +398,7 @@ meta_wayland_surface_resource_destroy_cb (struct wl_resource *wayland_surface_re
 }
 
 static void
-surface_destroy_callback (struct wl_listener *listener,
-                          struct wl_resource *resource,
-                          guint32 time)
+surface_destroy_callback (struct wl_listener *listener, void *data)
 {
   g_warning ("Surface destroy callback");
 }
@@ -468,6 +410,7 @@ meta_wayland_compositor_create_surface (struct wl_client *wayland_client,
 {
   MetaWaylandCompositor *compositor = wayland_compositor_resource->data;
   MetaWaylandSurface *surface = g_slice_new0 (MetaWaylandSurface);
+  struct wl_resource *surface_resource = &surface->wayland_surface.resource;
 
   surface->compositor = compositor;
 
@@ -481,8 +424,8 @@ meta_wayland_compositor_create_surface (struct wl_client *wayland_client,
 
   wl_client_add_resource (wayland_client, &surface->wayland_surface.resource);
 
-  surface->surface_destroy_listener.func = surface_destroy_callback;
-  wl_list_insert (surface->wayland_surface.resource.destroy_listener_list.prev,
+  surface->surface_destroy_listener.notify = surface_destroy_callback;
+  wl_list_insert (surface_resource->destroy_signal.listener_list.prev,
                   &surface->surface_destroy_listener.link);
 
   compositor->surfaces = g_list_prepend (compositor->surfaces, surface);
@@ -585,7 +528,7 @@ paint_finished_cb (ClutterActor *self, void *user_data)
 
       wl_resource_post_event (&callback->resource,
                               WL_CALLBACK_DONE, get_time ());
-      wl_resource_destroy (&callback->resource, 0);
+      wl_resource_destroy (&callback->resource);
     }
 }
 
@@ -603,114 +546,115 @@ compositor_bind (struct wl_client *client,
 
 typedef struct
 {
-  struct wl_grab grab;
+  struct wl_pointer_grab grab;
   int dx;
   int dy;
   MetaWaylandSurface *surface;
 } MetaWaylandMoveState;
 
 static void
-noop_grab_focus (struct wl_grab *grab,
-                 guint32 time,
+noop_grab_focus (struct wl_pointer_grab *grab,
                  struct wl_surface *surface,
-                 gint32 x,
-                 gint32 y)
+                 wl_fixed_t x,
+                 wl_fixed_t y)
 {
   grab->focus = NULL;
 }
 
 static void
-move_grab_motion (struct wl_grab *grab,
-                  guint32 time,
-                  gint32 x,
-                  gint32 y)
+move_grab_motion (struct wl_pointer_grab *grab,
+                  uint32_t time,
+                  wl_fixed_t x,
+                  wl_fixed_t y)
 {
   MetaWaylandMoveState *state = (MetaWaylandMoveState *)grab;
-  struct wl_input_device *device = grab->input_device;
   MetaWaylandSurface *surface = state->surface;
 
   meta_window_move (surface->window,
                     TRUE,
-                    device->x + state->dx,
-                    device->y + state->dy);
+                    grab->x + state->dx,
+                    grab->y + state->dy);
 }
 
 static void
-move_grab_button (struct wl_grab *grab,
-                  guint32 time,
-                  gint32 button,
-                  gint32 state)
+move_grab_button (struct wl_pointer_grab *grab,
+                  uint32_t time,
+                  uint32_t button,
+                  uint32_t state)
 {
-  struct wl_input_device *device = grab->input_device;
+  struct wl_pointer *pointer = grab->pointer;
 
-  if (device->button_count == 0 && state == 0)
+  if (pointer->button_count == 0 && state == 0)
     {
-      wl_input_device_end_grab(device, time);
+      wl_pointer_end_grab (pointer);
       g_slice_free (MetaWaylandMoveState, (MetaWaylandMoveState *)grab);
   }
 }
 
-
-static const struct wl_grab_interface move_grab_interface = {
-    noop_grab_focus,
-    move_grab_motion,
-    move_grab_button,
+static const struct wl_pointer_grab_interface
+move_grab_interface = {
+  noop_grab_focus,
+  move_grab_motion,
+  move_grab_button,
 };
 
 static int
 meta_wayland_surface_move (MetaWaylandSurface *surface,
-                           MetaWaylandInputDevice *input_device,
-                           guint32 time)
+                           MetaWaylandSeat *seat)
 {
   MetaWaylandMoveState *state = g_slice_new (MetaWaylandMoveState);
-  struct wl_input_device *wayland_device =
-    (struct wl_input_device *)input_device;
+  struct wl_pointer *pointer = seat->seat.pointer;
   int x, y;
 
   meta_window_get_position (surface->window, &x, &y);
 
   state->grab.interface = &move_grab_interface;
-  state->dx = x - wayland_device->grab_x;
-  state->dy = y - wayland_device->grab_y;
+  state->dx = x - pointer->grab_x;
+  state->dy = y - pointer->grab_y;
   state->surface = surface;
 
-  wl_input_device_start_grab (wayland_device, &state->grab, time);
+  wl_pointer_start_grab (pointer, &state->grab);
 
-  wl_input_device_set_pointer_focus (wayland_device,
-                                     NULL, time, 0, 0, 0, 0);
+  wl_pointer_set_focus (pointer, NULL, 0, 0);
 
   return 0;
 }
 
 static void
+shell_surface_pong (struct wl_client *client,
+                    struct wl_resource *resource,
+                    uint32_t serial)
+{
+  /* TODO */
+}
+
+static void
 shell_surface_move (struct wl_client *client,
                     struct wl_resource *resource,
-		    struct wl_resource *input_resource,
-                    guint32 time)
+                    struct wl_resource *seat_resource,
+                    uint32_t serial)
 {
-  MetaWaylandInputDevice *input_device = input_resource->data;
-  struct wl_input_device *wayland_device =
-    (struct wl_input_device *)input_device;
+  MetaWaylandSeat *seat = seat_resource->data;
+  struct wl_pointer *pointer = seat->seat.pointer;
   MetaWaylandShellSurface *shell_surface = resource->data;
 
-  if (wayland_device->button_count == 0 ||
-      wayland_device->grab_time != time ||
-      wayland_device->pointer_focus !=
-      &shell_surface->surface->wayland_surface)
+  if (pointer->button_count == 0 ||
+      pointer->grab_serial != serial ||
+      pointer->focus != &shell_surface->surface->wayland_surface)
     return;
 
-  if (meta_wayland_surface_move (shell_surface->surface,
-                                 input_device, time) < 0)
+  if (meta_wayland_surface_move (shell_surface->surface, seat) < 0)
     wl_resource_post_no_memory (resource);
 }
 
 static void
 shell_surface_resize (struct wl_client *client,
                       struct wl_resource *resource,
-                      struct wl_resource *input_resource,
-                      guint32 time,
-                      guint32 edges)
+                      struct wl_resource *seat_resource,
+                      uint32_t serial,
+                      uint32_t edges)
 {
+  /* TODO */
 }
 
 static void
@@ -720,7 +664,6 @@ ensure_surface_window (MetaWaylandSurface *surface)
 
   if (!surface->window)
     {
-      ClutterActor *window_actor;
       int width, height;
 
       if (surface->buffer && surface->buffer->wayland_buffer)
@@ -790,11 +733,16 @@ shell_surface_set_transient (struct wl_client *client,
 
 static void
 shell_surface_set_fullscreen (struct wl_client *client,
-                              struct wl_resource *resource)
+                              struct wl_resource *resource,
+                              uint32_t method,
+                              uint32_t framerate,
+                              struct wl_resource *output)
 {
   MetaWaylandCompositor *compositor = &_meta_wayland_compositor;
   MetaWaylandShellSurface *shell_surface = resource->data;
   MetaWaylandSurface *surface = shell_surface->surface;
+
+  /* TODO: Deal with method, framerate and parameters */
 
   /* NB: Surfaces from xwayland become managed based on X events. */
   if (client == compositor->xwayland_client)
@@ -805,19 +753,64 @@ shell_surface_set_fullscreen (struct wl_client *client,
   meta_window_make_fullscreen (surface->window);
 }
 
+static void
+shell_surface_set_popup (struct wl_client *client,
+                         struct wl_resource *resource,
+                         struct wl_resource *seat,
+                         uint32_t serial,
+                         struct wl_resource *parent,
+                         int32_t x,
+                         int32_t y,
+                         uint32_t flags)
+{
+  /* TODO */
+}
+
+static void
+shell_surface_set_maximized (struct wl_client *client,
+                             struct wl_resource *resource,
+                             struct wl_resource *output)
+{
+  MetaWaylandShellSurface *shell_surface = resource->data;
+  MetaWindow *window = shell_surface->surface->window;
+
+  meta_window_maximize (window,
+                        META_MAXIMIZE_HORIZONTAL |
+                        META_MAXIMIZE_VERTICAL);
+}
+
+static void
+shell_surface_set_title (struct wl_client *client,
+                         struct wl_resource *resource,
+                         const char *title)
+{
+  /* TODO */
+}
+
+static void
+shell_surface_set_class (struct wl_client *client,
+                         struct wl_resource *resource,
+                         const char *class_)
+{
+  /* TODO */
+}
+
 static const struct wl_shell_surface_interface meta_wayland_shell_surface_interface =
 {
+  shell_surface_pong,
   shell_surface_move,
   shell_surface_resize,
   shell_surface_set_toplevel,
   shell_surface_set_transient,
-  shell_surface_set_fullscreen
+  shell_surface_set_fullscreen,
+  shell_surface_set_popup,
+  shell_surface_set_maximized,
+  shell_surface_set_title,
+  shell_surface_set_class
 };
 
 static void
-shell_handle_surface_destroy (struct wl_listener *listener,
-                              struct wl_resource *resource,
-                              guint32 time)
+shell_handle_surface_destroy (struct wl_listener *listener, void *data)
 {
   MetaWaylandShellSurface *shell_surface = container_of (listener,
                                                          MetaWaylandShellSurface,
@@ -825,7 +818,7 @@ shell_handle_surface_destroy (struct wl_listener *listener,
 
   shell_surface->surface->has_shell_surface = FALSE;
   shell_surface->surface = NULL;
-  wl_resource_destroy (&shell_surface->resource, time);
+  wl_resource_destroy (&shell_surface->resource);
 }
 
 static void
@@ -869,8 +862,8 @@ get_shell_surface (struct wl_client *client,
   shell_surface->resource.data = shell_surface;
 
   shell_surface->surface = surface;
-  shell_surface->surface_destroy_listener.func = shell_handle_surface_destroy;
-  wl_list_insert (surface->wayland_surface.resource.destroy_listener_list.prev,
+  shell_surface->surface_destroy_listener.notify = shell_handle_surface_destroy;
+  wl_list_insert (surface_resource->destroy_signal.listener_list.prev,
                   &shell_surface->surface_destroy_listener.link);
 
   surface->has_shell_surface = TRUE;
@@ -1199,7 +1192,7 @@ xserver_set_window_id (struct wl_client *client,
                                                NULL);
 
       surface->window = window;
-      surface->actor = surface_actor;
+      surface->actor = &surface_actor->parent;
 
       /* If the MetaWindow becomes unmanaged (surface->actor will be freed in
        * this case) we need to make sure to clear our ->actor and ->window
@@ -1215,7 +1208,7 @@ xserver_set_window_id (struct wl_client *client,
 #endif
     }
 
-#warning "FIXME: Handle surface destroy and remove window_surfaces mapping"
+  /* FIXME: Handle surface destroy and remove window_surfaces mapping */
 }
 
 MetaWaylandSurface *
@@ -1280,19 +1273,19 @@ event_cb (ClutterActor *stage,
           const ClutterEvent *event,
           MetaWaylandCompositor *compositor)
 {
-  struct wl_input_device *device =
-    (struct wl_input_device *) compositor->input_device;
+  MetaWaylandSeat *seat = compositor->seat;
+  struct wl_pointer *pointer = seat->seat.pointer;
   MetaWaylandSurface *surface;
   MetaDisplay *display;
   XMotionEvent xevent;
 
-  meta_wayland_input_device_handle_event (compositor->input_device, event);
+  meta_wayland_seat_handle_event (compositor->seat, event);
 
   meta_wayland_stage_set_cursor_position (META_WAYLAND_STAGE (stage),
-                                          device->x,
-                                          device->y);
+                                          pointer->x,
+                                          pointer->y);
 
-  if (device->pointer_focus == NULL)
+  if (pointer->focus == NULL)
     meta_wayland_stage_set_default_cursor (META_WAYLAND_STAGE (stage));
 
   /* HACK: for now, the surfaces from Wayland clients aren't
@@ -1302,16 +1295,15 @@ event_cb (ClutterActor *stage,
      keyboard support */
   if (event->type == CLUTTER_BUTTON_PRESS)
     {
-      MetaWaylandSurface *surface = (MetaWaylandSurface *) device->current;
+      MetaWaylandSurface *surface = (MetaWaylandSurface *) pointer->current;
 
       /* Only focus surfaces that wouldn't be handled by the
          corresponding X events */
       if (surface && surface->xid == 0)
         {
-          wl_input_device_set_keyboard_focus (device,
-                                              (struct wl_surface *) surface,
-                                              event->any.time);
-          wl_data_device_set_keyboard_focus (device);
+          wl_keyboard_set_focus (seat->seat.keyboard,
+                                 (struct wl_surface *) surface);
+          wl_data_device_set_keyboard_focus (&seat->seat);
 
           /* Hack to test wayland surface stacking */
           meta_window_raise (surface->window);
@@ -1333,7 +1325,7 @@ event_cb (ClutterActor *stage,
       if (compositor->implicit_grab_surface == NULL)
         {
           compositor->implicit_grab_button = event->button.button;
-          compositor->implicit_grab_surface = device->current;
+          compositor->implicit_grab_surface = pointer->current;
         }
       return FALSE;
 
@@ -1362,27 +1354,27 @@ event_cb (ClutterActor *stage,
   if (compositor->implicit_grab_surface)
     surface = (MetaWaylandSurface *) compositor->implicit_grab_surface;
   else
-    surface = (MetaWaylandSurface *) device->current;
+    surface = (MetaWaylandSurface *) pointer->current;
 
-  if (surface == (MetaWaylandSurface *) device->current)
+  if (surface == (MetaWaylandSurface *) pointer->current)
     {
-      xevent.x = device->current_x;
-      xevent.y = device->current_y;
+      xevent.x = pointer->current_x;
+      xevent.y = pointer->current_y;
     }
   else if (surface)
     {
       float ax, ay;
 
       clutter_actor_transform_stage_point (surface->actor,
-                                           device->x, device->y,
+                                           pointer->x, pointer->y,
                                            &ax, &ay);
       xevent.x = ax;
       xevent.y = ay;
     }
   else
     {
-      xevent.x = device->x;
-      xevent.y = device->y;
+      xevent.x = pointer->x;
+      xevent.y = pointer->y;
     }
 
   if (surface && surface->xid != None)
@@ -1394,8 +1386,8 @@ event_cb (ClutterActor *stage,
      doesn't care either */
   xevent.subwindow = xevent.window;
   xevent.time = event->any.time;
-  xevent.x_root = device->x;
-  xevent.y_root = device->y;
+  xevent.x_root = pointer->x;
+  xevent.y_root = pointer->y;
   /* The Clutter state flags exactly match the X values */
   xevent.state = clutter_event_get_state (event);
 
@@ -1456,6 +1448,12 @@ event_emission_hook_cb (GSignalInvocationHint *ihint,
   return TRUE /* stay connected */;
 }
 
+static void
+custom_handler (const char *fmt, va_list arg)
+{
+  g_logv (G_LOG_DOMAIN, G_LOG_LEVEL_WARNING, fmt, arg);
+}
+
 void
 meta_wayland_init (void)
 {
@@ -1463,6 +1461,8 @@ meta_wayland_init (void)
   guint event_signal;
 
   memset (compositor, 0, sizeof (MetaWaylandCompositor));
+
+  wl_log_set_handler_server (custom_handler);
 
   compositor->wayland_display = wl_display_create ();
   if (compositor->wayland_display == NULL)
@@ -1475,11 +1475,6 @@ meta_wayland_init (void)
 			      compositor,
                               compositor_bind))
     g_error ("Failed to register wayland compositor object");
-
-  compositor->wayland_shm = wl_shm_init (compositor->wayland_display,
-                                         &shm_callbacks);
-  if (!compositor->wayland_shm)
-    g_error ("Failed to allocate setup wayland shm callbacks");
 
   compositor->wayland_loop =
     wl_display_get_event_loop (compositor->wayland_display);
@@ -1525,9 +1520,9 @@ meta_wayland_init (void)
 
   wl_data_device_manager_init (compositor->wayland_display);
 
-  compositor->input_device =
-    meta_wayland_input_device_new (compositor->wayland_display,
-                                   compositor->stage);
+  compositor->seat =
+    meta_wayland_seat_new (compositor,
+                           compositor->stage);
 
   meta_wayland_compositor_create_output (compositor, 0, 0, 1024, 600, 222, 125);
 

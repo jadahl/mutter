@@ -27,8 +27,10 @@
 #include <glib.h>
 
 #include "window-private.h"
-#include "meta-wayland-input-device.h"
-#include "window-private.h"
+
+#define container_of(ptr, type, member) ({				\
+	const __typeof__( ((type *)0)->member ) *__mptr = (ptr);	\
+	(type *)( (char *)__mptr - offsetof(type,member) );})
 
 typedef struct _MetaWaylandCompositor MetaWaylandCompositor;
 
@@ -38,6 +40,16 @@ typedef struct
   GList *surfaces_attached_to;
   struct wl_listener buffer_destroy_listener;
 } MetaWaylandBuffer;
+
+typedef struct
+{
+  struct wl_seat seat;
+  struct wl_pointer pointer;
+  struct wl_keyboard keyboard;
+
+  MetaWaylandCompositor *compositor;
+  ClutterActor *stage;
+} MetaWaylandSeat;
 
 struct _MetaWaylandSurface
 {
@@ -54,6 +66,7 @@ struct _MetaWaylandSurface
 };
 
 #ifndef HAVE_META_WAYLAND_SURFACE_TYPE
+#define HAVE_META_WAYLAND_SURFACE_TYPE
 typedef struct _MetaWaylandSurface MetaWaylandSurface;
 #endif
 
@@ -123,7 +136,7 @@ struct _MetaWaylandCompositor
   struct wl_resource *xserver_resource;
   GHashTable *window_surfaces;
 
-  MetaWaylandInputDevice *input_device;
+  MetaWaylandSeat *seat;
 
   /* This surface is only used to keep drag of the implicit grab when
      synthesizing XEvents for Mutter */
@@ -133,6 +146,16 @@ struct _MetaWaylandCompositor
      released */
   guint32 implicit_grab_button;
 };
+
+MetaWaylandSeat        *meta_wayland_seat_new                   (MetaWaylandCompositor *compositor,
+                                                                 ClutterActor          *stage);
+
+void                    meta_wayland_seat_handle_event          (MetaWaylandSeat       *seat,
+                                                                 const ClutterEvent    *event);
+
+void                    meta_wayland_seat_repick                (MetaWaylandSeat       *seat,
+                                                                 ClutterActor          *actor);
+
 
 void                    meta_wayland_init                       (void);
 void                    meta_wayland_finalize                   (void);

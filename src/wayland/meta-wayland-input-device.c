@@ -21,144 +21,190 @@
 
 #include <config.h>
 
+#include <wayland-server.h>
 #include <clutter/clutter.h>
 #include <clutter/wayland/clutter-wayland-compositor.h>
 #include <clutter/wayland/clutter-wayland-surface.h>
 #include <stdlib.h>
 #include <string.h>
 #include <linux/input.h>
-#include "meta-wayland-input-device.h"
 #include "meta-wayland-stage.h"
 #include "meta-wayland-private.h"
 
-struct _MetaWaylandInputDevice
-{
-  struct wl_input_device parent;
-
-  ClutterActor *stage;
-};
-
 static void
-input_device_attach (struct wl_client *client,
-                     struct wl_resource *resource,
-                     uint32_t time,
-                     struct wl_resource *buffer_resource,
-                     int32_t hotspot_x,
-                     int32_t hotspot_y)
+pointer_set_cursor (struct wl_client *client,
+                    struct wl_resource *resource,
+                    uint32_t serial,
+                    struct wl_resource *surface_resource,
+                    int32_t hotspot_x,
+                    int32_t hotspot_y)
 {
-  MetaWaylandCompositor *compositor = meta_wayland_compositor_get_default ();
-  MetaWaylandStage *stage = META_WAYLAND_STAGE (compositor->stage);
-  MetaWaylandInputDevice *device = resource->data;
-  struct wl_input_device *input_device = (struct wl_input_device *) device;
+  MetaWaylandSurface *surface = surface_resource->data;
+  MetaWaylandStage *stage = META_WAYLAND_STAGE (surface->compositor->stage);
 
-  if (time < input_device->pointer_focus_time)
-    return;
-  if (input_device->pointer_focus == NULL)
-    return;
-  if (input_device->pointer_focus->resource.client != client)
-    return;
-
-  if (buffer_resource)
+  if (surface)
     meta_wayland_stage_set_cursor_from_buffer (stage,
-                                               buffer_resource->data,
-                                               hotspot_x,
-                                               hotspot_y);
+                                               surface->buffer,
+                                               hotspot_x, hotspot_y);
   else
     meta_wayland_stage_set_invisible_cursor (stage);
 }
 
-const static struct wl_input_device_interface
-input_device_interface =
+const static struct wl_pointer_interface
+pointer_interface =
   {
-    input_device_attach
+    pointer_set_cursor
   };
 
 static void
-unbind_input_device (struct wl_resource *resource)
+get_pointer (struct wl_client *client,
+             struct wl_resource *resource,
+             uint32_t id)
+{
+  MetaWaylandSeat *seat = resource->data;
+  struct wl_resource *pointer_resource;
+
+  if (!seat->seat.pointer)
+    return;
+
+  pointer_resource = wl_client_add_object (client,
+                                           &wl_pointer_interface,
+                                           &pointer_interface,
+                                           id,
+                                           seat);
+  wl_list_insert (&seat->seat.pointer->resource_list, &pointer_resource->link);
+}
+
+static void
+get_keyboard (struct wl_client *client,
+              struct wl_resource *resource,
+              uint32_t id)
+{
+  MetaWaylandSeat *seat = resource->data;
+  struct wl_resource *keyboard_resource;
+
+  if (!seat->seat.keyboard)
+    return;
+
+  keyboard_resource = wl_client_add_object (client,
+                                            &wl_keyboard_interface,
+                                            NULL,
+                                            id,
+                                            seat);
+  wl_list_insert (&seat->seat.keyboard->resource_list,
+                  &keyboard_resource->link);
+}
+
+const static struct wl_seat_interface
+seat_interface =
+  {
+    get_pointer,
+    get_keyboard,
+    NULL /* TODO: get_touch */
+  };
+
+static void
+unbind_seat (struct wl_resource *resource)
 {
   wl_list_remove (&resource->link);
   free (resource);
 }
 
 static void
-bind_input_device (struct wl_client *client,
-                   void *data,
-                   uint32_t version,
-                   uint32_t id)
+send_capabilities (MetaWaylandSeat *seat)
 {
-  struct wl_input_device *device = data;
+  struct wl_resource *resource;
+  enum wl_seat_capability caps = 0;
+
+  if (seat->seat.pointer)
+    caps |= WL_SEAT_CAPABILITY_POINTER;
+  if (seat->seat.keyboard)
+    caps |= WL_SEAT_CAPABILITY_KEYBOARD;
+  if (seat->seat.touch)
+    caps |= WL_SEAT_CAPABILITY_TOUCH;
+
+  wl_list_for_each (resource, &seat->seat.base_resource_list, link)
+    wl_seat_send_capabilities (resource, caps);
+}
+
+static void
+bind_seat (struct wl_client *client,
+           void *data,
+           uint32_t version,
+           uint32_t id)
+{
+  MetaWaylandSeat *seat = data;
   struct wl_resource *resource;
 
   resource = wl_client_add_object (client,
-                                   &wl_input_device_interface,
-                                   &input_device_interface,
+                                   &wl_seat_interface,
+                                   &seat_interface,
                                    id,
                                    data);
 
-  wl_list_insert (&device->resource_list, &resource->link);
+  wl_list_insert (&seat->seat.base_resource_list, &resource->link);
+  resource->destroy = unbind_seat;
 
-  resource->destroy = unbind_input_device;
+  send_capabilities (seat);
 }
 
-MetaWaylandInputDevice *
-meta_wayland_input_device_new (struct wl_display *display,
-                               ClutterActor *stage)
+MetaWaylandSeat *
+meta_wayland_seat_new (MetaWaylandCompositor *compositor,
+                       ClutterActor *stage)
 {
-  MetaWaylandInputDevice *device = g_new (MetaWaylandInputDevice, 1);
+  MetaWaylandSeat *seat = g_new (MetaWaylandSeat, 1);
 
-  wl_input_device_init (&device->parent);
-  device->stage = stage;
+  wl_seat_init (&seat->seat);
+  seat->stage = stage;
+  seat->compositor = compositor;
 
-  wl_display_add_global (display,
-                         &wl_input_device_interface,
-                         device,
-                         bind_input_device);
+  wl_pointer_init (&seat->pointer);
+  wl_seat_set_pointer (&seat->seat, &seat->pointer);
+  wl_keyboard_init (&seat->keyboard);
+  wl_seat_set_keyboard (&seat->seat, &seat->keyboard);
 
-  return device;
+  wl_display_add_global (compositor->wayland_display,
+                         &wl_seat_interface,
+                         seat,
+                         bind_seat);
+
+  return seat;
 }
 
 static void
-handle_motion_event (MetaWaylandInputDevice *input_device,
+handle_motion_event (MetaWaylandSeat *seat,
                      const ClutterMotionEvent *event)
 {
-  struct wl_input_device *device =
-    (struct wl_input_device *) input_device;
+  seat->seat.pointer->x = event->x;
+  seat->seat.pointer->y = event->y;
 
-  device->x = event->x;
-  device->y = event->y;
+  meta_wayland_seat_repick (seat, event->source);
 
-  meta_wayland_input_device_repick (input_device,
-                                    event->time,
-                                    event->source);
-
-  device->grab->interface->motion (device->grab,
-                                   event->time,
-                                   device->grab->x,
-                                   device->grab->y);
+  seat->seat.pointer->grab->interface->motion (seat->seat.pointer->grab,
+                                               event->time,
+                                               seat->seat.pointer->grab->x,
+                                               seat->seat.pointer->grab->y);
 }
 
 static void
-handle_button (MetaWaylandInputDevice *input_device,
+handle_button (MetaWaylandSeat *seat,
                uint32_t time,
                uint32_t button,
                gboolean state)
 {
-  struct wl_input_device *device =
-    (struct wl_input_device *) input_device;
+  struct wl_pointer *pointer = seat->seat.pointer;
 
   if (state)
     {
-      if (device->button_count == 0)
+      if (seat->seat.pointer->button_count == 0)
         {
-          struct wl_input_device *wayland_device =
-            (struct wl_input_device *)input_device;
-          struct wl_surface *wayland_surface = wayland_device->current;
+          struct wl_surface *wayland_surface = pointer->current;
           MetaWaylandSurface *surface;
 
-          device->grab_button = button;
-          device->grab_time = time;
-          device->grab_x = device->x;
-          device->grab_y = device->y;
+          pointer->grab_button = button;
+          pointer->grab_time = time;
+          pointer->grab_x = pointer->x;
+          pointer->grab_y = pointer->y;
 
           if (wayland_surface)
             {
@@ -171,16 +217,19 @@ handle_button (MetaWaylandInputDevice *input_device,
             }
         }
 
-      device->button_count++;
+      pointer->button_count++;
     }
   else
-    device->button_count--;
+    pointer->button_count--;
 
-  device->grab->interface->button (device->grab, time, button, state);
+  pointer->grab->interface->button (seat->seat.pointer->grab,
+                                    time,
+                                    button,
+                                    state);
 }
 
 static void
-handle_button_event (MetaWaylandInputDevice *input_device,
+handle_button_event (MetaWaylandSeat *seat,
                      const ClutterButtonEvent *event)
 {
   gboolean state = event->type == CLUTTER_BUTTON_PRESS;
@@ -203,15 +252,14 @@ handle_button_event (MetaWaylandInputDevice *input_device,
       break;
     }
 
-  handle_button (input_device, event->time, button, state);
+  handle_button (seat, event->time, button, state);
 }
 
 static void
-handle_key_event (MetaWaylandInputDevice *input_device,
+handle_key_event (MetaWaylandSeat *seat,
                   const ClutterKeyEvent *event)
 {
-  struct wl_input_device *device =
-    (struct wl_input_device *) input_device;
+  struct wl_keyboard *keyboard = seat->seat.keyboard;
   gboolean state = event->type == CLUTTER_KEY_PRESS;
   guint evdev_code;
 
@@ -229,29 +277,31 @@ handle_key_event (MetaWaylandInputDevice *input_device,
      pressed */
   if (state)
     {
-      uint32_t *end = (void *) ((char *) device->keys.data + device->keys.size);
+      uint32_t *end =
+        (void *) ((char *) keyboard->keys.data + keyboard->keys.size);
       uint32_t *k;
 
       /* Ignore the event if the key is already down */
-      for (k = device->keys.data; k < end; k++)
+      for (k = keyboard->keys.data; k < end; k++)
         if (*k == evdev_code)
           return;
 
       /* Otherwise add the key to the list of pressed keys */
-      k = wl_array_add (&device->keys, sizeof (*k));
+      k = wl_array_add (&keyboard->keys, sizeof (*k));
       *k = evdev_code;
     }
   else
     {
-      uint32_t *end = (void *) ((char *) device->keys.data + device->keys.size);
+      uint32_t *end =
+              (void *) ((char *) keyboard->keys.data + keyboard->keys.size);
       uint32_t *k;
 
       /* Remove the key from the array */
-      for (k = device->keys.data; k < end; k++)
+      for (k = keyboard->keys.data; k < end; k++)
         if (*k == evdev_code)
           {
             *k = *(end - 1);
-            device->keys.size -= sizeof (*k);
+            keyboard->keys.size -= sizeof (*k);
 
             goto found;
           }
@@ -262,77 +312,47 @@ handle_key_event (MetaWaylandInputDevice *input_device,
       (void) 0;
     }
 
-  if (device->keyboard_focus_resource)
-    wl_resource_post_event (device->keyboard_focus_resource,
-                            WL_INPUT_DEVICE_KEY,
+  if (keyboard->focus_resource)
+    {
+      uint32_t serial =
+        wl_display_next_serial (seat->compositor->wayland_display);
+      wl_keyboard_send_key (keyboard->focus_resource,
+                            serial,
                             event->time,
                             evdev_code,
                             state);
+    }
 }
 
 static void
-handle_scroll_event (MetaWaylandInputDevice *input_device,
+handle_scroll_event (MetaWaylandSeat *seat,
                      const ClutterScrollEvent *event)
 {
-  int button;
-
-  /* Clutter converts the scroll button events into separate scroll
-     events. We want to convert these back to button press and release
-     events */
-
-  switch (event->direction)
-    {
-    case CLUTTER_SCROLL_UP:
-      button = BTN_SIDE;
-      break;
-
-    case CLUTTER_SCROLL_DOWN:
-      button = BTN_EXTRA;
-      break;
-
-    case CLUTTER_SCROLL_LEFT:
-      button = BTN_FORWARD;
-      break;
-
-    case CLUTTER_SCROLL_RIGHT:
-      button = BTN_BACK;
-      break;
-
-    default:
-      return;
-    }
-
-  /* Synthesize a button press and release */
-  handle_button (input_device, event->time, button, TRUE /* press */);
-  handle_button (input_device, event->time, button, FALSE /* release */);
+  /* TODO: Handle smooth scrolling */
 }
 
 void
-meta_wayland_input_device_handle_event (MetaWaylandInputDevice *input_device,
-                                        const ClutterEvent *event)
+meta_wayland_seat_handle_event (MetaWaylandSeat *seat,
+                                const ClutterEvent *event)
 {
   switch (event->type)
     {
     case CLUTTER_MOTION:
-      handle_motion_event (input_device,
-                           (const ClutterMotionEvent *) event);
+      handle_motion_event (seat, (const ClutterMotionEvent *) event);
       break;
 
     case CLUTTER_BUTTON_PRESS:
     case CLUTTER_BUTTON_RELEASE:
-      handle_button_event (input_device,
-                           (const ClutterButtonEvent *) event);
+      handle_button_event (seat, (const ClutterButtonEvent *) event);
       break;
 
     case CLUTTER_KEY_PRESS:
     case CLUTTER_KEY_RELEASE:
-      handle_key_event (input_device,
-                        (const ClutterKeyEvent *) event);
+      handle_key_event (seat, (const ClutterKeyEvent *) event);
       break;
 
     case CLUTTER_SCROLL:
-      handle_scroll_event (input_device,
-                           (const ClutterScrollEvent *) event);
+      handle_scroll_event (seat, (const ClutterScrollEvent *) event);
       break;
 
     default:
@@ -346,20 +366,19 @@ meta_wayland_input_device_handle_event (MetaWaylandInputDevice *input_device,
    case Clutter will have already performed a pick so we can avoid
    redundantly doing another one */
 void
-meta_wayland_input_device_repick (MetaWaylandInputDevice *device,
-                                  uint32_t                time,
-                                  ClutterActor           *actor)
+meta_wayland_seat_repick (MetaWaylandSeat *seat,
+                          ClutterActor    *actor)
 {
-  struct wl_input_device *input_device = (struct wl_input_device *) device;
+  struct wl_pointer *pointer = seat->seat.pointer;
   struct wl_surface *surface;
   MetaWaylandSurface *focus;
 
   if (actor == NULL)
     {
-      ClutterStage *stage = CLUTTER_STAGE (device->stage);
+      ClutterStage *stage = CLUTTER_STAGE (seat->stage);
       actor = clutter_stage_get_actor_at_pos (stage,
                                               CLUTTER_PICK_REACTIVE,
-                                              input_device->x, input_device->y);
+                                              pointer->x, pointer->y);
     }
 
   if (CLUTTER_WAYLAND_IS_SURFACE (actor))
@@ -368,33 +387,34 @@ meta_wayland_input_device_repick (MetaWaylandInputDevice *device,
       float ax, ay;
 
       clutter_actor_transform_stage_point (actor,
-                                           input_device->x, input_device->y,
+                                           pointer->x, pointer->y,
                                            &ax, &ay);
-      input_device->current_x = ax;
-      input_device->current_y = ay;
+      pointer->current_x = ax;
+      pointer->current_y = ay;
 
       surface = clutter_wayland_surface_get_surface (wl_surface);
     }
   else
     surface = NULL;
 
-  if (surface != input_device->current)
+  if (surface != pointer->current)
     {
-      const struct wl_grab_interface *interface = input_device->grab->interface;
-      interface->focus (input_device->grab, time, surface,
-                        input_device->current_x, input_device->current_y);
-      input_device->current = surface;
+      const struct wl_pointer_grab_interface *interface =
+        pointer->grab->interface;
+      interface->focus (pointer->grab, surface,
+                        pointer->current_x, pointer->current_y);
+      pointer->current = surface;
     }
 
-  focus = (MetaWaylandSurface *) input_device->grab->focus;
+  focus = (MetaWaylandSurface *) pointer->grab->focus;
   if (focus)
     {
       float ax, ay;
 
       clutter_actor_transform_stage_point (focus->actor,
-                                           input_device->x, input_device->y,
+                                           pointer->x, pointer->y,
                                            &ax, &ay);
-      input_device->grab->x = ax;
-      input_device->grab->y = ay;
+      pointer->grab->x = ax;
+      pointer->grab->y = ay;
     }
 }

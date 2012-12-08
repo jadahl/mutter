@@ -169,7 +169,6 @@ if HAVE_WAYLAND
 libmutter_la_SOURCES +=				\
 	wayland/meta-wayland.c			\
 	wayland/meta-wayland-private.h		\
-	wayland/meta-wayland-input-device.h	\
 	wayland/meta-wayland-input-device.c	\
 	wayland/meta-wayland-stage.h		\
 	wayland/meta-wayland-stage.c
