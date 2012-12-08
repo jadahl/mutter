@@ -83,7 +83,7 @@ void              meta_wayland_stage_set_cursor_position    (MetaWaylandStage *s
 void              meta_wayland_stage_set_default_cursor     (MetaWaylandStage *self);
 
 void              meta_wayland_stage_set_cursor_from_buffer (MetaWaylandStage  *self,
-                                                             MetaWaylandBuffer *buffer,
+                                                             struct wl_buffer  *buffer,
                                                              int                hotspot_x,
                                                              int                hotspot_y);
 

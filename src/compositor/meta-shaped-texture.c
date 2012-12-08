@@ -23,6 +23,7 @@
  * 02111-1307, USA.
  */
 
+#include <stdlib.h>
 #include <config.h>
 
 #define CLUTTER_ENABLE_EXPERIMENTAL_API
@@ -705,7 +706,7 @@ meta_shaped_texture_new_with_surface (MetaWaylandSurface *surface)
       if (surface->buffer)
         {
           clutter_wayland_surface_attach_buffer (CLUTTER_WAYLAND_SURFACE (surface->actor),
-                                                 surface->buffer->wayland_buffer,
+                                                 surface->buffer,
                                                  NULL);
         }
       return actor;
@@ -717,8 +718,13 @@ meta_shaped_texture_new_with_surface (MetaWaylandSurface *surface)
 ClutterActor *
 meta_shaped_texture_new_with_xwindow (Window xwindow)
 {
+#if 0
   MetaWaylandSurface *surface = meta_wayland_lookup_surface_for_xid (xwindow);
   return meta_shaped_texture_new_with_surface (surface);
+#else
+  abort();
+  return NULL;
+#endif
 }
 
 #else /* HAVE_WAYLAND */

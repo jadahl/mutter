@@ -42,7 +42,7 @@ pointer_set_cursor (struct wl_client *client,
   MetaWaylandSurface *surface = surface_resource->data;
   MetaWaylandStage *stage = META_WAYLAND_STAGE (surface->compositor->stage);
 
-  if (surface)
+  if (surface && surface->buffer)
     meta_wayland_stage_set_cursor_from_buffer (stage,
                                                surface->buffer,
                                                hotspot_x, hotspot_y);

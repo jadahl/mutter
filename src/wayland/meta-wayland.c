@@ -87,7 +87,9 @@ wayland_event_source_dispatch (GSource *base,
                                void *data)
 {
   WaylandEventSource *source = (WaylandEventSource *)base;
+  wl_display_flush_clients (source->display);
   wl_event_loop_dispatch (source->loop, 0);
+  wl_display_flush_clients (source->display);
   return TRUE;
 }
 
@@ -100,13 +102,15 @@ static GSourceFuncs wayland_event_source_funcs =
 };
 
 static GSource *
-wayland_event_source_new (struct wl_event_loop *loop)
+wayland_event_source_new (struct wl_display *display,
+			  struct wl_event_loop *loop)
 {
   WaylandEventSource *source;
 
   source = (WaylandEventSource *) g_source_new (&wayland_event_source_funcs,
                                                 sizeof (WaylandEventSource));
   source->loop = loop;
+  source->display = display;
   source->pfd.fd = wl_event_loop_get_fd (loop);
   source->pfd.events = G_IO_IN | G_IO_ERR;
   g_source_add_poll (&source->source, &source->pfd);
@@ -115,96 +119,39 @@ wayland_event_source_new (struct wl_event_loop *loop)
 }
 
 static void
-buffer_destroy_callback (struct wl_listener *listener, void *data)
+meta_wayland_surface_detach_buffer (MetaWaylandSurface *surface)
 {
-  MetaWaylandBuffer *buffer =
-    container_of (listener, MetaWaylandBuffer,
-                  buffer_destroy_listener);
-  GList *l;
+  struct wl_buffer *buffer = surface->buffer;
 
-  buffer->wayland_buffer = NULL;
-
-  for (l = buffer->surfaces_attached_to; l; l = l->next)
+  if (buffer)
     {
-      MetaWaylandSurface *surface = l->data;
+      buffer->busy_count--;
+      if (buffer->busy_count == 0)
+        wl_buffer_send_release (&buffer->resource);
+
       surface->buffer = NULL;
     }
-
-  g_list_free (buffer->surfaces_attached_to);
-  buffer->surfaces_attached_to = NULL;
-}
-
-static MetaWaylandBuffer *
-meta_wayland_buffer_new (struct wl_buffer *wayland_buffer)
-{
-  MetaWaylandBuffer *buffer = g_slice_new0 (MetaWaylandBuffer);
-
-  buffer->wayland_buffer = wayland_buffer;
-  buffer->surfaces_attached_to = NULL;
-
-  buffer->buffer_destroy_listener.notify = buffer_destroy_callback;
-  wl_list_insert (wayland_buffer->resource.destroy_signal.listener_list.prev,
-                  &buffer->buffer_destroy_listener.link);
-
-  return buffer;
-}
-
-static void
-meta_wayland_buffer_free (MetaWaylandBuffer *buffer)
-{
-  GList *l;
-
-  if (buffer->wayland_buffer)
-    {
-      buffer->wayland_buffer->resource.data = NULL;
-
-      wl_list_remove (&buffer->buffer_destroy_listener.link);
-    }
-
-  for (l = buffer->surfaces_attached_to; l; l = l->next)
-    {
-      MetaWaylandSurface *surface = l->data;
-      surface->buffer = NULL;
-    }
-
-  g_list_free (buffer->surfaces_attached_to);
-  g_slice_free (MetaWaylandBuffer, buffer);
 }
 
 static void
 meta_wayland_surface_destroy (struct wl_client *wayland_client,
                               struct wl_resource *wayland_resource)
 {
+  MetaWaylandSurface *surface = wayland_resource->data;
+
+  meta_wayland_surface_detach_buffer (surface);
   wl_resource_destroy (wayland_resource);
-}
-
-static void
-meta_wayland_surface_detach_buffer (MetaWaylandSurface *surface)
-{
-  MetaWaylandBuffer *buffer = surface->buffer;
-
-  if (buffer)
-    {
-      wl_resource_queue_event (&buffer->wayland_buffer->resource,
-                               WL_BUFFER_RELEASE);
-
-      buffer->surfaces_attached_to =
-        g_list_remove (buffer->surfaces_attached_to, surface);
-      if (buffer->surfaces_attached_to == NULL)
-        meta_wayland_buffer_free (buffer);
-      surface->buffer = NULL;
-    }
 }
 
 static void
 meta_wayland_surface_attach_buffer (struct wl_client *wayland_client,
                                     struct wl_resource *wayland_surface_resource,
                                     struct wl_resource *wayland_buffer_resource,
-                                    gint32 dx, gint32 dy)
+                                    int32_t dx,
+                                    int32_t dy)
 {
-  struct wl_buffer *wayland_buffer = wayland_buffer_resource->data;
-  MetaWaylandBuffer *buffer = wayland_buffer->resource.data;
   MetaWaylandSurface *surface = wayland_surface_resource->data;
+  struct wl_buffer *buffer = wayland_buffer_resource->data;
   ClutterWaylandSurface *surface_actor;
 
   /* XXX: in the case where we are reattaching the same buffer we can
@@ -216,43 +163,36 @@ meta_wayland_surface_attach_buffer (struct wl_client *wayland_client,
 
   meta_wayland_surface_detach_buffer (surface);
 
-  if (!buffer)
+  surface->pending.buffer = NULL;
+  surface->buffer = buffer;
+
+  buffer->busy_count++;
+
+  if (!surface->actor)
     {
-      buffer = meta_wayland_buffer_new (wayland_buffer);
-      wayland_buffer->resource.data = buffer;
+      MetaWaylandCompositor *compositor = surface->compositor;
+      surface->actor = clutter_wayland_surface_new (&surface->wayland_surface);
+      clutter_container_add_actor (CLUTTER_CONTAINER (compositor->stage),
+                                   surface->actor);
+      clutter_actor_set_reactive (surface->actor, TRUE);
     }
 
-  g_return_if_fail (g_list_find (buffer->surfaces_attached_to, surface) == NULL);
+  surface_actor = CLUTTER_WAYLAND_SURFACE (surface->actor);
+  if (!clutter_wayland_surface_attach_buffer (surface_actor, buffer,
+                                              NULL))
+    g_warning ("Failed to attach buffer to ClutterWaylandSurface");
 
-  buffer->surfaces_attached_to = g_list_prepend (buffer->surfaces_attached_to,
-                                                 surface);
-
-  /* XXX: Its a bit messy but even though xwayland surfaces are
-   * handled separately we still set surface->actor to the
-   * MetaShapedTexture actor thats created for a MetaWindowActor.
-   * This means we can consistently deal with damage and attaching
-   * buffers to surfaces.
-   */
-  if (surface->actor)
+  if (surface->window &&
+      surface->window->client_type == META_WINDOW_CLIENT_TYPE_WAYLAND)
     {
-      surface_actor = CLUTTER_WAYLAND_SURFACE (surface->actor);
-      clutter_actor_set_reactive (surface->actor, TRUE);
-      if (!clutter_wayland_surface_attach_buffer (surface_actor, wayland_buffer,
-                                                  NULL))
-        g_warning ("Failed to attach buffer to ClutterWaylandSurface");
+      int x, y;
 
-      g_assert (surface->window);
-
-      if (surface->window->client_type == META_WINDOW_CLIENT_TYPE_WAYLAND)
-        {
-          int x, y;
-          meta_window_get_position (surface->window, &x, &y);
-          meta_window_move_resize (surface->window,
-                                   TRUE,
-                                   x, y,
-                                   wayland_buffer->width,
-                                   wayland_buffer->height);
-        }
+      meta_window_get_position (surface->window, &x, &y);
+      meta_window_move_resize (surface->window,
+                               TRUE,
+                               x, y,
+                               buffer->width,
+                               buffer->height);
     }
 
   surface->buffer = buffer;
@@ -261,16 +201,16 @@ meta_wayland_surface_attach_buffer (struct wl_client *wayland_client,
 static void
 meta_wayland_surface_damage (struct wl_client *client,
                              struct wl_resource *surface_resource,
-                             gint32 x,
-                             gint32 y,
-                             gint32 width,
-                             gint32 height)
+                             int32_t x,
+                             int32_t y,
+                             int32_t width,
+                             int32_t height)
 {
   MetaWaylandSurface *surface = surface_resource->data;
   if (surface->buffer && surface->actor)
     {
       clutter_wayland_surface_damage_buffer (CLUTTER_WAYLAND_SURFACE (surface->actor),
-                                             surface->buffer->wayland_buffer,
+                                             surface->buffer,
                                              x, y, width, height);
     }
 }
@@ -289,7 +229,7 @@ destroy_frame_callback (struct wl_resource *callback_resource)
 static void
 meta_wayland_surface_frame (struct wl_client *client,
                             struct wl_resource *surface_resource,
-                            guint32 callback_id)
+                            uint32_t callback_id)
 {
   MetaWaylandFrameCallback *callback;
   MetaWaylandSurface *surface = surface_resource->data;
@@ -308,11 +248,46 @@ meta_wayland_surface_frame (struct wl_client *client,
                           &callback->node);
 }
 
+static void
+meta_wayland_surface_set_opaque_region (struct wl_client *client,
+                                        struct wl_resource *resource,
+                                        struct wl_resource *region)
+{
+  /* TODO: Implement opaque region */
+}
+
+static void
+meta_wayland_surface_set_input_region (struct wl_client *client,
+                                       struct wl_resource *resource,
+                                       struct wl_resource *region)
+{
+  /* TODO: Implement input region */
+}
+
+static void
+meta_wayland_surface_commit (struct wl_client *client,
+                             struct wl_resource *wayland_surface_resource)
+{
+  /* TODO: Implement transactions */
+}
+
+static void
+meta_wayland_surface_set_buffer_transform (struct wl_client *client,
+                                           struct wl_resource *resource,
+                                           int32_t transform)
+{
+  /* TODO: Implement buffer transformations */
+}
+
 const struct wl_surface_interface meta_wayland_surface_interface = {
   meta_wayland_surface_destroy,
   meta_wayland_surface_attach_buffer,
   meta_wayland_surface_damage,
-  meta_wayland_surface_frame
+  meta_wayland_surface_frame,
+  meta_wayland_surface_set_opaque_region,
+  meta_wayland_surface_set_input_region,
+  meta_wayland_surface_commit,
+  meta_wayland_surface_set_buffer_transform
 };
 
 /* This should be called whenever the window stacking changes to
@@ -412,6 +387,9 @@ meta_wayland_compositor_create_surface (struct wl_client *wayland_client,
   MetaWaylandSurface *surface = g_slice_new0 (MetaWaylandSurface);
   struct wl_resource *surface_resource = &surface->wayland_surface.resource;
 
+  surface->pending.buffer = NULL;
+  surface->buffer = NULL;
+
   surface->compositor = compositor;
 
   surface->wayland_surface.resource.destroy =
@@ -432,6 +410,14 @@ meta_wayland_compositor_create_surface (struct wl_client *wayland_client,
 }
 
 static void
+meta_wayland_compositor_create_region (struct wl_client *client,
+                                       struct wl_resource *resource,
+                                       uint32_t id)
+{
+  /* TODO: Implement regions */
+}
+
+static void
 bind_output (struct wl_client *client,
              void *data,
              guint32 version,
@@ -442,24 +428,24 @@ bind_output (struct wl_client *client,
     wl_client_add_object (client, &wl_output_interface, NULL, id, data);
   GList *l;
 
-  wl_resource_post_event (resource,
-                          WL_OUTPUT_GEOMETRY,
-                          output->x, output->y,
-                          output->width_mm,
-                          output->height_mm,
-                          0, /* subpixel: unknown */
-                          "unknown", /* make */
-                          "unknown"); /* model */
+  wl_output_send_geometry (resource,
+                           output->x,
+                           output->y,
+                           output->width_mm,
+                           output->height_mm,
+                           0, /* subpixel: unknown */
+                           "unknown", /* make */
+                           "unknown", /* model */
+                           WL_OUTPUT_TRANSFORM_NORMAL);
 
   for (l = output->modes; l; l = l->next)
     {
       MetaWaylandMode *mode = l->data;
-      wl_resource_post_event (resource,
-                              WL_OUTPUT_MODE,
-                              mode->flags,
-                              mode->width,
-                              mode->height,
-                              mode->refresh);
+      wl_output_send_mode (resource,
+                           mode->flags,
+                           mode->width,
+                           mode->height,
+                           mode->refresh);
     }
 }
 
@@ -514,6 +500,7 @@ meta_wayland_compositor_create_output (MetaWaylandCompositor *compositor,
 
 const static struct wl_compositor_interface meta_wayland_compositor_interface = {
   meta_wayland_compositor_create_surface,
+  meta_wayland_compositor_create_region
 };
 
 static void
@@ -526,10 +513,11 @@ paint_finished_cb (ClutterActor *self, void *user_data)
       MetaWaylandFrameCallback *callback =
         g_queue_peek_head (&compositor->frame_callbacks);
 
-      wl_resource_post_event (&callback->resource,
-                              WL_CALLBACK_DONE, get_time ());
+      wl_callback_send_done(&callback->resource, get_time ());
       wl_resource_destroy (&callback->resource);
     }
+
+  wl_display_flush_clients (compositor->wayland_display);
 }
 
 static void
@@ -666,11 +654,10 @@ ensure_surface_window (MetaWaylandSurface *surface)
     {
       int width, height;
 
-      if (surface->buffer && surface->buffer->wayland_buffer)
+      if (surface->buffer)
         {
-          struct wl_buffer *buffer = surface->buffer->wayland_buffer;
-          width = buffer->width;
-          height = buffer->width;
+          width = surface->buffer->width;
+          height = surface->buffer->width;
         }
       else
         {
@@ -680,6 +667,9 @@ ensure_surface_window (MetaWaylandSurface *surface)
 
       surface->window =
         meta_window_new_for_wayland (display, width, height, surface);
+
+      if (!surface->actor)
+        return;
 
       /* The new MetaWindow should always result in us creating a corresponding
        * MetaWindowActor which will be immediately associated with the given
@@ -886,6 +876,7 @@ bind_shell (struct wl_client *client,
                         &meta_wayland_shell_interface, id, data);
 }
 
+#if 0
 static char *
 create_lockfile (int display, int *display_out)
 {
@@ -1188,7 +1179,7 @@ xserver_set_window_id (struct wl_client *client,
                                            &surface->wayland_surface);
       if (surface->buffer)
         clutter_wayland_surface_attach_buffer (surface_actor,
-                                               surface->buffer->wayland_buffer,
+                                               surface->buffer,
                                                NULL);
 
       surface->window = window;
@@ -1261,6 +1252,7 @@ bind_xserver (struct wl_client *client,
   g_main_loop_quit (compositor->init_loop);
   compositor->init_loop = NULL;
 }
+#endif
 
 static void
 stage_destroy_cb (void)
@@ -1468,6 +1460,9 @@ meta_wayland_init (void)
   if (compositor->wayland_display == NULL)
     g_error ("failed to create wayland display");
 
+  wl_data_device_manager_init (compositor->wayland_display);
+  wl_display_init_shm (compositor->wayland_display);
+
   g_queue_init (&compositor->frame_callbacks);
 
   if (!wl_display_add_global (compositor->wayland_display,
@@ -1479,7 +1474,8 @@ meta_wayland_init (void)
   compositor->wayland_loop =
     wl_display_get_event_loop (compositor->wayland_display);
   compositor->wayland_event_source =
-    wayland_event_source_new (compositor->wayland_loop);
+    wayland_event_source_new (compositor->wayland_display,
+			      compositor->wayland_loop);
 
   /* XXX: Here we are setting the wayland event source to have a
    * slightly lower priority than the X event source, because we are
@@ -1535,6 +1531,7 @@ meta_wayland_init (void)
   if (wl_display_add_socket (compositor->wayland_display, "wayland-0"))
     g_error ("Failed to create socket");
 
+#if 0
   wl_display_add_global (compositor->wayland_display,
                          &xserver_interface,
                          compositor,
@@ -1564,12 +1561,15 @@ meta_wayland_init (void)
   compositor->init_loop = g_main_loop_new (NULL, FALSE);
 
   g_main_loop_run (compositor->init_loop);
+#endif
 }
 
 void
 meta_wayland_finalize (void)
 {
+#if 0
   stop_xwayland (meta_wayland_compositor_get_default ());
+#endif
 }
 
 void

@@ -210,19 +210,18 @@ meta_wayland_stage_set_default_cursor (MetaWaylandStage *self)
 
 void
 meta_wayland_stage_set_cursor_from_buffer (MetaWaylandStage  *self,
-                                           MetaWaylandBuffer *buffer,
+                                           struct wl_buffer  *buffer,
                                            int                hotspot_x,
                                            int                hotspot_y)
 {
   ClutterBackend *backend = clutter_get_default_backend ();
   CoglContext *context = clutter_backend_get_cogl_context (backend);
-  struct wl_buffer *wayland_buffer = buffer->wayland_buffer;
   CoglTexture *texture;
   GError *error = NULL;
 
   texture =
     COGL_TEXTURE (cogl_wayland_texture_2d_new_from_buffer (context,
-                                                           wayland_buffer,
+                                                           buffer,
                                                            &error));
 
   if (texture == NULL)

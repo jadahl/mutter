@@ -58,11 +58,15 @@ struct _MetaWaylandSurface
   guint32 xid;
   int x;
   int y;
-  MetaWaylandBuffer *buffer;
+  struct wl_buffer *buffer;
   MetaWindow *window;
   ClutterActor *actor;
   gboolean has_shell_surface;
   struct wl_listener surface_destroy_listener;
+
+  struct {
+    struct wl_buffer *buffer;
+  } pending;
 };
 
 #ifndef HAVE_META_WAYLAND_SURFACE_TYPE
@@ -101,6 +105,7 @@ typedef struct
 {
   GSource source;
   GPollFD pfd;
+  struct wl_display *display;
   struct wl_event_loop *loop;
 } WaylandEventSource;
 
