@@ -46,8 +46,11 @@ libmutter_la_SOURCES =				\
 	compositor/cogl-utils.h			\
 	compositor/compositor.c			\
 	compositor/compositor-private.h		\
+	compositor/meta-background.c		\
 	compositor/meta-background-actor.c	\
 	compositor/meta-background-actor-private.h	\
+	compositor/meta-background-group.c	\
+	compositor/meta-background-group-private.h	\
 	compositor/meta-module.c		\
 	compositor/meta-module.h		\
 	compositor/meta-plugin.c		\
@@ -69,7 +72,9 @@ libmutter_la_SOURCES =				\
 	compositor/region-utils.c		\
 	compositor/region-utils.h		\
 	meta/compositor.h			\
+	meta/meta-background.h			\
 	meta/meta-background-actor.h		\
+	meta/meta-background-group.h		\
 	meta/meta-plugin.h			\
 	meta/meta-shadow-factory.h		\
 	meta/meta-window-actor.h		\
@@ -173,6 +178,8 @@ libmutterinclude_base_headers =		\
 	meta/keybindings.h			\
 	meta/main.h				\
 	meta/meta-background-actor.h		\
+	meta/meta-background-group.h		\
+	meta/meta-background.h			\
 	meta/meta-plugin.h			\
 	meta/meta-shaped-texture.h		\
 	meta/meta-shadow-factory.h		\

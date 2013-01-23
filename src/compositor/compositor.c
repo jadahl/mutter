@@ -13,10 +13,11 @@
 #include "xprops.h"
 #include <meta/prefs.h>
 #include <meta/main.h>
+#include <meta/meta-background-actor.h>
+#include <meta/meta-background-group.h>
 #include <meta/meta-shadow-factory.h>
 #include "meta-window-actor-private.h"
 #include "meta-window-group.h"
-#include "meta-background-actor-private.h"
 #include "window-private.h" /* to check window->hidden */
 #include "display-private.h" /* for meta_display_lookup_x_window() */
 #include <X11/extensions/shape.h>
@@ -116,21 +117,6 @@ process_property_notify (MetaCompositor	*compositor,
                          MetaWindow     *window)
 {
   MetaWindowActor *window_actor;
-
-  if (event->atom == compositor->atom_x_root_pixmap)
-    {
-      GSList *l;
-
-      for (l = meta_display_get_screens (compositor->display); l; l = l->next)
-        {
-	  MetaScreen  *screen = l->data;
-          if (event->window == meta_screen_get_xroot (screen))
-            {
-              meta_background_actor_update (screen);
-              return;
-            }
-        }
-    }
 
   if (window == NULL)
     return;
@@ -235,27 +221,6 @@ meta_get_window_group_for_screen (MetaScreen *screen)
     return NULL;
 
   return info->window_group;
-}
-
-/**
- * meta_get_background_actor_for_screen:
- * @screen: a #MetaScreen
- *
- * Gets the actor that draws the root window background under the windows.
- * The root window background automatically tracks the image or color set
- * by the environment.
- *
- * Returns: (transfer none): The background actor corresponding to @screen
- */
-ClutterActor *
-meta_get_background_actor_for_screen (MetaScreen *screen)
-{
-  MetaCompScreen *info = meta_screen_get_compositor_data (screen);
-
-  if (!info)
-    return NULL;
-
-  return info->background_actor;
 }
 
 /**
@@ -588,13 +553,8 @@ meta_compositor_manage_screen (MetaCompositor *compositor,
   }
 
   info->window_group = meta_window_group_new (screen);
-  info->background_actor = meta_background_actor_new_for_screen (screen);
   info->overlay_group = clutter_group_new ();
   info->hidden_group = clutter_group_new ();
-
-  clutter_container_add (CLUTTER_CONTAINER (info->window_group),
-                         info->background_actor,
-                         NULL);
 
   clutter_container_add (CLUTTER_CONTAINER (info->stage),
                          info->window_group,
@@ -984,8 +944,11 @@ static void
 sync_actor_stacking (MetaCompScreen *info)
 {
   GList *children;
+  GList *expected_window_node;
   GList *tmp;
   GList *old;
+  GList *backgrounds;
+  gboolean has_windows;
   gboolean reordered;
 
   /* NB: The first entries in the lists are stacked the lowest */
@@ -997,48 +960,46 @@ sync_actor_stacking (MetaCompScreen *info)
   children = clutter_container_get_children (CLUTTER_CONTAINER (info->window_group));
   reordered = FALSE;
 
-  old = children;
-
   /* We allow for actors in the window group other than the actors we
    * know about, but it's up to a plugin to try and keep them stacked correctly
    * (we really need extra API to make that reliable.)
    */
 
-  /* Of the actors we know, the bottom actor should be the background actor */
-
-  while (old && old->data != info->background_actor && !META_IS_WINDOW_ACTOR (old->data))
-    old = old->next;
-  if (old == NULL || old->data != info->background_actor)
+  /* First we collect a list of all backgrounds, and check if they're at the
+   * bottom. Then we check if the window actors are in the correct sequence */
+  backgrounds = NULL;
+  expected_window_node = info->windows;
+  for (old = children; old != NULL; old = old->next)
     {
-      reordered = TRUE;
-      goto done_with_check;
-    }
+      ClutterActor *actor = old->data;
 
-  /* Then the window actors should follow in sequence */
-
-  old = old->next;
-  for (tmp = info->windows; tmp != NULL; tmp = tmp->next)
-    {
-      while (old && !META_IS_WINDOW_ACTOR (old->data))
-        old = old->next;
-
-      /* old == NULL: someone reparented a window out of the window group,
-       * order undefined, always restack */
-      if (old == NULL || old->data != tmp->data)
+      if (META_IS_BACKGROUND_GROUP (actor) ||
+          META_IS_BACKGROUND_ACTOR (actor))
         {
-          reordered = TRUE;
-          goto done_with_check;
+          backgrounds = g_list_prepend (backgrounds, actor);
+
+          if (has_windows)
+            reordered = TRUE;
         }
+      else if (META_IS_WINDOW_ACTOR (actor) && !reordered)
+        {
+          has_windows = TRUE;
 
-      old = old->next;
+          if (expected_window_node != NULL && actor == expected_window_node->data)
+            expected_window_node = expected_window_node->next;
+          else
+            reordered = TRUE;
+        }
     }
-
- done_with_check:
-
-  g_list_free (children);
 
   if (!reordered)
-    return;
+    {
+      g_list_free (backgrounds);
+      return;
+    }
+
+  /* reorder the actors by lowering them in turn to the bottom of the stack.
+   * windows first, then backgrounds */
 
   for (tmp = g_list_last (info->windows); tmp != NULL; tmp = tmp->prev)
     {
@@ -1047,7 +1008,16 @@ sync_actor_stacking (MetaCompScreen *info)
       clutter_actor_lower_bottom (CLUTTER_ACTOR (window_actor));
     }
 
-  clutter_actor_lower_bottom (info->background_actor);
+  /* we prepended the backgrounds above so the last actor in the list
+   * should get lowered to the bottom last.
+   */
+  for (tmp = backgrounds; tmp != NULL; tmp = tmp->next)
+    {
+      ClutterActor *actor = tmp->data;
+
+      clutter_actor_lower_bottom (CLUTTER_ACTOR (actor));
+    }
+  g_list_free (backgrounds);
 }
 
 void
@@ -1201,8 +1171,6 @@ meta_compositor_sync_screen_size (MetaCompositor  *compositor,
   xwin = clutter_x11_get_stage_window (CLUTTER_STAGE (info->stage));
 
   XResizeWindow (xdisplay, xwin, width, height);
-
-  meta_background_actor_screen_size_changed (screen);
 
   meta_verbose ("Changed size for stage on screen %d to %dx%d\n",
 		meta_screen_get_screen_number (screen),
