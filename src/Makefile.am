@@ -85,6 +85,8 @@ libmutter_la_SOURCES =				\
 	backends/edid.h				\
 	backends/x11/meta-backend-x11.c			\
 	backends/x11/meta-backend-x11.h			\
+	backends/x11/meta-barrier-x11.c			\
+	backends/x11/meta-barrier-x11.h			\
 	backends/x11/meta-cursor-renderer-x11.c		\
 	backends/x11/meta-cursor-renderer-x11.h		\
 	backends/x11/meta-idle-monitor-xsync.c		\
@@ -94,6 +96,7 @@ libmutter_la_SOURCES =				\
 	core/meta-accel-parse.c			\
 	core/meta-accel-parse.h			\
 	core/barrier.c				\
+	core/meta-barrier-private.h		\
 	meta/barrier.h				\
 	core/bell.c				\
 	core/bell.h				\

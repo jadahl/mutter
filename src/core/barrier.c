@@ -10,15 +10,17 @@
 
 #include <glib-object.h>
 
-#include <X11/extensions/XInput2.h>
-#include <X11/extensions/Xfixes.h>
 #include <meta/util.h>
 #include <meta/barrier.h>
+#include "backends/x11/meta-backend-x11.h"
+#include "backends/x11/meta-barrier-x11.h"
+#include "core/meta-barrier-private.h"
 #include "display-private.h"
 #include "mutter-enum-types.h"
 #include "core.h"
 
 G_DEFINE_TYPE (MetaBarrier, meta_barrier, G_TYPE_OBJECT)
+G_DEFINE_TYPE (MetaBarrierImpl, meta_barrier_impl, G_TYPE_OBJECT)
 
 enum {
   PROP_0,
@@ -45,21 +47,6 @@ enum {
 
 static guint obj_signals[LAST_SIGNAL];
 
-struct _MetaBarrierPrivate
-{
-  MetaDisplay *display;
-
-  int x1;
-  int y1;
-  int x2;
-  int y2;
-
-  MetaBarrierDirection directions;
-
-  PointerBarrier xbarrier;
-};
-
-static void meta_barrier_event_unref (MetaBarrierEvent *event);
 
 static void
 meta_barrier_get_property (GObject    *object,
@@ -129,26 +116,15 @@ meta_barrier_set_property (GObject      *object,
     }
 }
 
-static void
-meta_barrier_dispose (GObject *object)
-{
-  MetaBarrier *barrier = META_BARRIER (object);
-  MetaBarrierPrivate *priv = barrier->priv;
-
-  if (meta_barrier_is_active (barrier))
-    {
-      meta_bug ("MetaBarrier wrapper %p for X barrier %ld was destroyed"
-                " while the X barrier is still active.",
-                barrier, priv->xbarrier);
-    }
-
-  G_OBJECT_CLASS (meta_barrier_parent_class)->dispose (object);
-}
-
 gboolean
 meta_barrier_is_active (MetaBarrier *barrier)
 {
-  return barrier->priv->xbarrier != 0;
+  MetaBarrierImpl *impl = barrier->priv->impl;
+
+  if (impl)
+    return META_BARRIER_IMPL_GET_CLASS (impl)->is_active (impl);
+  else
+    return FALSE;
 }
 
 /**
@@ -165,15 +141,10 @@ void
 meta_barrier_release (MetaBarrier      *barrier,
                       MetaBarrierEvent *event)
 {
-#ifdef HAVE_XI23
-  MetaBarrierPrivate *priv = barrier->priv;
-  if (META_DISPLAY_HAS_XINPUT_23 (priv->display))
-    {
-      XIBarrierReleasePointer (priv->display->xdisplay,
-                               META_VIRTUAL_CORE_POINTER_ID,
-                               priv->xbarrier, event->event_id);
-    }
-#endif /* HAVE_XI23 */
+  MetaBarrierImpl *impl = barrier->priv->impl;
+
+  if (impl)
+    return META_BARRIER_IMPL_GET_CLASS (impl)->release (impl, event);
 }
 
 static void
@@ -181,32 +152,37 @@ meta_barrier_constructed (GObject *object)
 {
   MetaBarrier *barrier = META_BARRIER (object);
   MetaBarrierPrivate *priv = barrier->priv;
-  Display *dpy;
-  Window root;
 
   g_return_if_fail (priv->x1 == priv->x2 || priv->y1 == priv->y2);
 
-  if (priv->display == NULL)
-    {
-      g_warning ("A display must be provided when constructing a barrier.");
-      return;
-    }
+#if defined(HAVE_XI23)
+  if (META_IS_BACKEND_X11 (meta_get_backend ()) &&
+      !meta_is_wayland_compositor ())
+    priv->impl = _meta_barrier_impl_x11_new (barrier);
+#endif
 
-  dpy = priv->display->xdisplay;
-  root = DefaultRootWindow (dpy);
+  if (priv->impl == NULL)
+    g_warning ("Created a non-working barrier");
 
-  priv->xbarrier = XFixesCreatePointerBarrier (dpy, root,
-                                               priv->x1, priv->y1,
-                                               priv->x2, priv->y2,
-                                               priv->directions, 0, NULL);
-
-  /* Take a ref that we'll release when the XID dies inside destroy(),
-   * so that the object stays alive and doesn't get GC'd. */
+  /* Take a ref that we'll release in destroy() so that the object stays
+   * alive while active. */
   g_object_ref (barrier);
 
-  g_hash_table_insert (priv->display->xids, &priv->xbarrier, barrier);
-
   G_OBJECT_CLASS (meta_barrier_parent_class)->constructed (object);
+}
+
+static void
+meta_barrier_dispose (GObject *object)
+{
+  MetaBarrier *barrier = META_BARRIER (object);
+
+  if (meta_barrier_is_active (barrier))
+    {
+      meta_bug ("MetaBarrier %p was destroyed while it was still active.",
+                barrier);
+    }
+
+  G_OBJECT_CLASS (meta_barrier_parent_class)->dispose (object);
 }
 
 static void
@@ -306,20 +282,10 @@ meta_barrier_class_init (MetaBarrierClass *klass)
 void
 meta_barrier_destroy (MetaBarrier *barrier)
 {
-  MetaBarrierPrivate *priv = barrier->priv;
-  Display *dpy;
+  MetaBarrierImpl *impl = barrier->priv->impl;
 
-  if (priv->display == NULL)
-    return;
-
-  dpy = priv->display->xdisplay;
-
-  if (!meta_barrier_is_active (barrier))
-    return;
-
-  XFixesDestroyPointerBarrier (dpy, priv->xbarrier);
-  g_hash_table_remove (priv->display->xids, &priv->xbarrier);
-  priv->xbarrier = 0;
+  if (impl)
+    return META_BARRIER_IMPL_GET_CLASS (impl)->destroy (impl);
 
   g_object_unref (barrier);
 }
@@ -330,71 +296,19 @@ meta_barrier_init (MetaBarrier *barrier)
   barrier->priv = G_TYPE_INSTANCE_GET_PRIVATE (barrier, META_TYPE_BARRIER, MetaBarrierPrivate);
 }
 
-#ifdef HAVE_XI23
-static void
-meta_barrier_fire_event (MetaBarrier    *barrier,
-                         XIBarrierEvent *xevent)
+void
+_meta_barrier_emit_hit_signal (MetaBarrier      *barrier,
+                               MetaBarrierEvent *event)
 {
-  MetaBarrierEvent *event = g_slice_new0 (MetaBarrierEvent);
-
-  event->ref_count = 1;
-  event->event_id = xevent->eventid;
-  event->time = xevent->time;
-  event->dt = xevent->dtime;
-
-  event->x = xevent->root_x;
-  event->y = xevent->root_y;
-  event->dx = xevent->dx;
-  event->dy = xevent->dy;
-
-  event->released = (xevent->flags & XIBarrierPointerReleased) != 0;
-  event->grabbed = (xevent->flags & XIBarrierDeviceIsGrabbed) != 0;
-
-  switch (xevent->evtype)
-    {
-    case XI_BarrierHit:
-      g_signal_emit (barrier, obj_signals[HIT], 0, event);
-      break;
-    case XI_BarrierLeave:
-      g_signal_emit (barrier, obj_signals[LEFT], 0, event);
-      break;
-    default:
-      g_assert_not_reached ();
-    }
-
-  meta_barrier_event_unref (event);
+  g_signal_emit (barrier, obj_signals[HIT], 0, event);
 }
 
-gboolean
-meta_display_process_barrier_xevent (MetaDisplay *display,
-                                     XIEvent     *event)
+void
+_meta_barrier_emit_left_signal (MetaBarrier      *barrier,
+                                MetaBarrierEvent *event)
 {
-  MetaBarrier *barrier;
-  XIBarrierEvent *xev;
-
-  if (event == NULL)
-    return FALSE;
-
-  switch (event->evtype)
-    {
-    case XI_BarrierHit:
-    case XI_BarrierLeave:
-      break;
-    default:
-      return FALSE;
-    }
-
-  xev = (XIBarrierEvent *) event;
-  barrier = g_hash_table_lookup (display->xids, &xev->barrier);
-  if (barrier != NULL)
-    {
-      meta_barrier_fire_event (barrier, xev);
-      return TRUE;
-    }
-
-  return FALSE;
+  g_signal_emit (barrier, obj_signals[LEFT], 0, event);
 }
-#endif /* HAVE_XI23 */
 
 static MetaBarrierEvent *
 meta_barrier_event_ref (MetaBarrierEvent *event)
@@ -406,7 +320,7 @@ meta_barrier_event_ref (MetaBarrierEvent *event)
   return event;
 }
 
-static void
+void
 meta_barrier_event_unref (MetaBarrierEvent *event)
 {
   g_return_if_fail (event != NULL);
@@ -414,6 +328,19 @@ meta_barrier_event_unref (MetaBarrierEvent *event)
 
   if (g_atomic_int_dec_and_test ((volatile int *)&event->ref_count))
     g_slice_free (MetaBarrierEvent, event);
+}
+
+static void
+meta_barrier_impl_class_init (MetaBarrierImplClass *klass)
+{
+  klass->is_active = NULL;
+  klass->release = NULL;
+  klass->destroy = NULL;
+}
+
+static void
+meta_barrier_impl_init (MetaBarrierImpl *impl)
+{
 }
 
 G_DEFINE_BOXED_TYPE (MetaBarrierEvent,
