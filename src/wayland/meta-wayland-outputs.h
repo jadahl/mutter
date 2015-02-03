@@ -25,6 +25,8 @@
 #ifndef META_WAYLAND_OUTPUTS_H
 #define META_WAYLAND_OUTPUTS_H
 
+#include <wayland-server.h>
+
 #include "backends/meta-monitor-manager-private.h"
 #include "meta-wayland-private.h"
 
@@ -36,6 +38,8 @@ typedef struct
   enum wl_output_transform  transform;
 
   GList                    *resources;
+
+  struct wl_signal          destroy_signal;
 } MetaWaylandOutput;
 
 void meta_wayland_outputs_init (MetaWaylandCompositor *compositor);

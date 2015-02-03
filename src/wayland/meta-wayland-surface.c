@@ -42,6 +42,7 @@
 #include "meta-wayland-pointer.h"
 #include "meta-wayland-popup.h"
 #include "meta-wayland-data-device.h"
+#include "meta-wayland-outputs.h"
 
 #include "meta-cursor-tracker-private.h"
 #include "display-private.h"
@@ -713,12 +714,196 @@ sync_reactive (MetaWaylandSurface *surface)
                               surface_should_be_reactive (surface));
 }
 
+static void
+surface_entered_output (MetaWaylandSurface *surface,
+                        MetaWaylandOutput *wayland_output)
+{
+  GList *iter;
+  struct wl_resource *resource;
+
+  for (iter = wayland_output->resources; iter != NULL; iter = iter->next)
+    {
+      resource = iter->data;
+
+      if (wl_resource_get_client (resource) !=
+          wl_resource_get_client (surface->resource))
+        continue;
+
+      wl_surface_send_enter (surface->resource, resource);
+    }
+}
+
+static void
+surface_left_output (MetaWaylandSurface *surface,
+                     MetaWaylandOutput *wayland_output)
+{
+  GList *iter;
+  struct wl_resource *resource;
+
+  for (iter = wayland_output->resources; iter != NULL; iter = iter->next)
+    {
+      resource = iter->data;
+
+      if (wl_resource_get_client (resource) !=
+          wl_resource_get_client (surface->resource))
+        continue;
+
+      wl_surface_send_leave (surface->resource, resource);
+    }
+}
+
+static void
+set_surface_is_on_output (MetaWaylandSurface *surface,
+                          MetaWaylandOutput *wayland_output,
+                          gboolean is_on_output);
+
+typedef struct
+{
+  MetaWaylandSurface *surface;
+  struct wl_listener  listener;
+} MetaWaylandSurfaceOutputDestroyListener;
+
+static void
+surface_handle_output_destroy (struct wl_listener *listener, void *data)
+{
+  MetaWaylandSurfaceOutputDestroyListener *output_destroy_listener =
+    wl_container_of (listener, output_destroy_listener, listener);
+  MetaWaylandSurface *surface = output_destroy_listener->surface;
+  MetaWaylandOutput *wayland_output = data;
+
+  set_surface_is_on_output (surface, wayland_output, FALSE);
+}
+
+static void
+surface_output_removed (gpointer data)
+{
+  MetaWaylandSurfaceOutputDestroyListener *output_destroy_listener = data;
+
+  wl_list_remove (&output_destroy_listener->listener.link);
+
+  g_slice_free (MetaWaylandSurfaceOutputDestroyListener,
+                output_destroy_listener);
+}
+
+static void
+set_surface_is_on_output (MetaWaylandSurface *surface,
+                          MetaWaylandOutput *wayland_output,
+                          gboolean is_on_output)
+{
+  MetaWaylandSurfaceOutputDestroyListener *output_destroy_listener;
+
+  gboolean was_on_output = g_hash_table_contains (surface->outputs,
+                                                  wayland_output);
+
+  if (!was_on_output && is_on_output)
+    {
+      output_destroy_listener =
+        g_slice_new0 (MetaWaylandSurfaceOutputDestroyListener);
+      output_destroy_listener->listener.notify = surface_handle_output_destroy;
+      wl_signal_add (&wayland_output->destroy_signal,
+                     &output_destroy_listener->listener);
+
+      g_hash_table_insert (surface->outputs,
+                           wayland_output,
+                           output_destroy_listener);
+
+      surface_entered_output (surface, wayland_output);
+    }
+  else if (was_on_output && !is_on_output)
+    {
+      g_hash_table_remove (surface->outputs, wayland_output);
+      surface_left_output (surface, wayland_output);
+    }
+}
+
+typedef struct
+{
+  MetaWaylandSurface   *surface;
+  cairo_rectangle_int_t buffer_rect;
+} UpdateOutputStateData;
+
+static void
+update_surface_output_state (gpointer key, gpointer value, gpointer user_data)
+{
+  MetaWaylandOutput *wayland_output = value;
+  MetaWaylandSurface *surface = user_data;
+  MetaSurfaceActorWayland *actor =
+    META_SURFACE_ACTOR_WAYLAND (surface->surface_actor);
+  MetaCRTC *crtc;
+  gboolean is_on_output;
+
+  crtc = wayland_output->output->crtc;
+  if (!crtc)
+    {
+      set_surface_is_on_output (surface, wayland_output, FALSE);
+      return;
+    }
+
+  is_on_output = meta_surface_actor_wayland_is_on_crtc (actor, crtc);
+  set_surface_is_on_output (surface, wayland_output, is_on_output);
+}
+
+static void
+subsurface_update_outputs (gpointer data, gpointer user_data);
+
+static void
+surface_update_outputs (MetaWaylandSurface *surface)
+{
+  g_hash_table_foreach (surface->compositor->outputs,
+                        update_surface_output_state,
+                        surface);
+
+  g_list_foreach (surface->subsurfaces, subsurface_update_outputs, NULL);
+}
+
+static void
+subsurface_update_outputs (gpointer data, gpointer user_data)
+{
+  MetaWaylandSurface *surface = data;
+
+  surface_update_outputs (surface);
+}
+
+static void
+window_actor_position_changed (MetaWindowActor *actor,
+                               GParamSpec *pspec,
+                               MetaWaylandSurface *surface)
+{
+  surface_update_outputs (surface);
+}
+
 void
 meta_wayland_surface_set_window (MetaWaylandSurface *surface,
                                  MetaWindow         *window)
 {
+  if (surface->window_actor)
+    {
+      g_signal_handlers_disconnect_by_func (
+        surface->window_actor,
+        G_CALLBACK (window_actor_position_changed),
+        surface);
+      g_object_remove_weak_pointer (G_OBJECT (surface->window_actor),
+                                    (gpointer)&surface->window_actor);
+    }
+
   surface->window = window;
   sync_reactive (surface);
+
+  if (window != NULL)
+    {
+      surface->window_actor =
+        META_WINDOW_ACTOR (meta_window_get_compositor_private (window));
+      g_object_add_weak_pointer (G_OBJECT (surface->window_actor),
+                                 (gpointer)&surface->window_actor);
+
+      /* Don't use the 'position-changed' signal in MetaWindow because the move
+       * has not taken effect in the scene graph when it is emitted. Instead
+       * listen to changes to the 'position' parameter on the window actor,
+       * which represents the window position in the stage. */
+
+      g_signal_connect (surface->window_actor, "notify::position",
+                        G_CALLBACK (window_actor_position_changed), surface);
+    }
 }
 
 static void
@@ -759,6 +944,8 @@ wl_surface_destructor (struct wl_resource *resource)
 
   meta_wayland_compositor_destroy_frame_callbacks (compositor, surface);
 
+  g_hash_table_unref (surface->outputs);
+
   if (surface->resource)
     wl_resource_set_user_data (surface->resource, NULL);
 
@@ -794,6 +981,10 @@ meta_wayland_surface_create (MetaWaylandCompositor *compositor,
 
   surface->buffer_destroy_listener.notify = surface_handle_buffer_destroy;
   surface->surface_actor = g_object_ref_sink (meta_surface_actor_wayland_new (surface));
+
+  surface->outputs = g_hash_table_new_full (NULL, NULL,
+                                            NULL,
+                                            surface_output_removed);
 
   pending_state_init (&surface->pending);
   return surface;

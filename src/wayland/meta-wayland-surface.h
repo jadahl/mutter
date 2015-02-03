@@ -28,6 +28,7 @@
 #include <cairo.h>
 
 #include <meta/meta-cursor-tracker.h>
+#include <meta/meta-window-actor.h>
 #include "meta-wayland-types.h"
 #include "meta-surface-actor.h"
 
@@ -79,6 +80,7 @@ struct _MetaWaylandSurface
   MetaSurfaceActor *surface_actor;
   MetaWaylandSurfaceRole role;
   MetaWindow *window;
+  MetaWindowActor *window_actor;
   MetaWaylandBuffer *buffer;
   struct wl_listener buffer_destroy_listener;
   cairo_region_t *input_region;
@@ -86,6 +88,7 @@ struct _MetaWaylandSurface
   int scale;
   int32_t offset_x, offset_y;
   GList *subsurfaces;
+  GHashTable *outputs;
 
   /* All the pending state that wl_surface.commit will apply. */
   MetaWaylandPendingState pending;

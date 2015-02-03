@@ -192,6 +192,43 @@ meta_surface_actor_wayland_sync_state_recursive (MetaSurfaceActorWayland *self)
     }
 }
 
+gboolean
+meta_surface_actor_wayland_is_on_crtc (MetaSurfaceActorWayland *self,
+                                       MetaCRTC                *crtc)
+{
+  float x, y, width, height;
+  cairo_rectangle_int_t actor_rect;
+  cairo_region_t *region;
+
+  clutter_actor_get_transformed_position (CLUTTER_ACTOR (self), &x, &y);
+  clutter_actor_get_transformed_size (CLUTTER_ACTOR (self), &width, &height);
+
+  actor_rect = (cairo_rectangle_int_t) {
+    .x = (int)(x + 0.5f),
+    .y = (int)(y + 0.5f),
+    .width = (int)(width + 0.5f),
+    .height = (int)(height + 0.5f),
+  };
+
+  /* Calculate the scaled surface actor region. */
+  region = cairo_region_create_rectangle (&actor_rect);
+
+  if (cairo_region_intersect_rectangle (region,
+                                        &((cairo_rectangle_int_t) {
+                                          .x = crtc->rect.x,
+                                          .y = crtc->rect.y,
+                                          .width = crtc->rect.width,
+                                          .height = crtc->rect.height,
+                                        })) != CAIRO_STATUS_SUCCESS)
+    {
+      cairo_region_destroy (region);
+      return FALSE;
+    }
+  cairo_region_destroy (region);
+
+  return !cairo_region_is_empty (region);
+}
+
 static MetaWindow *
 meta_surface_actor_wayland_get_window (MetaSurfaceActor *actor)
 {

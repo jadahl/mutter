@@ -100,6 +100,8 @@ wayland_output_destroy_notify (gpointer data)
   MetaWaylandOutput *wayland_output = data;
   GList *resources;
 
+  wl_signal_emit (&wayland_output->destroy_signal, wayland_output);
+
   /* Make sure the destructors don't mess with the list */
   resources = wayland_output->resources;
   wayland_output->resources = NULL;
@@ -165,6 +167,21 @@ wayland_output_update_for_output (MetaWaylandOutput *wayland_output,
   wayland_output->transform = wl_transform;
 }
 
+static MetaWaylandOutput *
+meta_wayland_output_create (MetaWaylandCompositor *compositor)
+{
+  MetaWaylandOutput *wayland_output;
+
+  wayland_output = g_slice_new0 (MetaWaylandOutput);
+  wayland_output->global = wl_global_create (compositor->wayland_display,
+                                             &wl_output_interface,
+                                             META_WL_OUTPUT_VERSION,
+                                             wayland_output, bind_output);
+  wl_signal_init (&wayland_output->destroy_signal);
+
+  return wayland_output;
+}
+
 static GHashTable *
 meta_wayland_compositor_update_outputs (MetaWaylandCompositor *compositor,
                                         MetaMonitorManager    *monitors)
@@ -196,11 +213,7 @@ meta_wayland_compositor_update_outputs (MetaWaylandCompositor *compositor,
         }
       else
         {
-          wayland_output = g_slice_new0 (MetaWaylandOutput);
-          wayland_output->global = wl_global_create (compositor->wayland_display,
-                                                     &wl_output_interface,
-						     META_WL_OUTPUT_VERSION,
-                                                     wayland_output, bind_output);
+          wayland_output = meta_wayland_output_create (compositor);
         }
 
       wayland_output_update_for_output (wayland_output, output);
