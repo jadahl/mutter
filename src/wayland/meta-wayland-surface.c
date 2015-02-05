@@ -67,6 +67,9 @@ typedef struct
   struct wl_listener sibling_destroy_listener;
 } MetaWaylandSubsurfacePlacementOp;
 
+static void
+surface_update_outputs (MetaWaylandSurface *surface);
+
 int
 meta_wayland_surface_set_role (MetaWaylandSurface    *surface,
                                MetaWaylandSurfaceRole role,
@@ -505,6 +508,10 @@ apply_pending_state (MetaWaylandSurface      *surface,
       subsurface_surface_commit (surface, pending);
       break;
     }
+
+  if (pending->newly_attached &&
+      CLUTTER_ACTOR_IS_MAPPED (surface->surface_actor))
+    surface_update_outputs (surface);
 
   pending_state_reset (pending);
 
