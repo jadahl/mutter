@@ -33,6 +33,7 @@
 #include "wayland/meta-wayland-private.h"
 #include "wayland/window-wayland.h"
 
+#include "core/util-private.h"
 #include "compositor/region-utils.h"
 
 struct _MetaSurfaceActorWaylandPrivate
@@ -92,9 +93,12 @@ meta_surface_actor_wayland_get_scale (MetaSurfaceActorWayland *actor)
 
    window = meta_wayland_surface_get_toplevel_window (surface);
 
-   /* XXX: We do not handle x11 clients yet */
-   if (window && window->client_type != META_WINDOW_CLIENT_TYPE_X11)
-     output_scale = meta_window_wayland_get_main_monitor_scale (window);
+   if (!meta_is_multi_dpi_clutter ())
+     {
+       /* XXX: We do not handle x11 clients yet */
+       if (window && window->client_type != META_WINDOW_CLIENT_TYPE_X11)
+         output_scale = meta_window_wayland_get_main_monitor_scale (window);
+     }
 
    return (double)output_scale / (double)priv->surface->scale;
 }

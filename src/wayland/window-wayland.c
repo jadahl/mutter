@@ -32,6 +32,7 @@
 #include "stack-tracker.h"
 #include "meta-wayland-surface.h"
 #include "compositor/meta-surface-actor-wayland.h"
+#include "util-private.h"
 
 struct _MetaWindowWayland
 {
@@ -168,7 +169,6 @@ meta_window_wayland_move_resize_internal (MetaWindow                *window,
   gboolean can_move_now;
   int configured_width;
   int configured_height;
-  int monitor_scale;
 
   g_assert (window->frame == NULL);
 
@@ -176,9 +176,19 @@ meta_window_wayland_move_resize_internal (MetaWindow                *window,
    * is mainly on. Scale the configured rectangle to be in logical pixel
    * coordinate space so that we can have a scale independent size to pass
    * to the Wayland surface. */
-  monitor_scale = meta_window_wayland_get_main_monitor_scale (window);
-  configured_width = constrained_rect.width / monitor_scale;
-  configured_height = constrained_rect.height / monitor_scale;
+  if (!meta_is_multi_dpi_clutter ())
+    {
+      int monitor_scale;
+
+      monitor_scale = meta_window_wayland_get_main_monitor_scale (window);
+      configured_width = constrained_rect.width / monitor_scale;
+      configured_height = constrained_rect.height / monitor_scale;
+    }
+  else
+    {
+      configured_width = constrained_rect.width;
+      configured_height = constrained_rect.height;
+    }
 
   /* For wayland clients, the size is completely determined by the client,
    * and while this allows to avoid some trickery with frames and the resulting
@@ -317,6 +327,12 @@ meta_window_wayland_update_main_monitor (MetaWindow *window)
       return;
     }
 
+  if (meta_is_multi_dpi_clutter ())
+    {
+      window->monitor = to;
+      return;
+    }
+
   /* To avoid a window alternating between two main monitors because scaling
    * changes the main monitor, wait until both the current and the new scale
    * will result in the same main monitor. */
@@ -336,6 +352,9 @@ meta_window_wayland_main_monitor_changed (MetaWindow *window,
 {
   float scale_factor;
   MetaWaylandSurface *surface;
+
+  if (meta_is_multi_dpi_clutter ())
+    return;
 
   /* This function makes sure that window geometry, window actor geometry and
    * surface actor geometry gets set according the old and current main monitor
@@ -545,17 +564,21 @@ meta_window_wayland_move_resize (MetaWindow        *window,
   int gravity;
   MetaRectangle rect;
   MetaMoveResizeFlags flags;
-  int monitor_scale;
 
   /* new_geom is in the logical pixel coordinate space, but MetaWindow wants its
    * rects to represent what in turn will end up on the stage, i.e. we need to
    * scale new_geom to physical pixels given what buffer scale and texture scale
    * is in use. */
-  monitor_scale = meta_window_wayland_get_main_monitor_scale (window);
-  new_geom.x *= monitor_scale;
-  new_geom.y *= monitor_scale;
-  new_geom.width *= monitor_scale;
-  new_geom.height *= monitor_scale;
+  if (!meta_is_multi_dpi_clutter ())
+    {
+      int monitor_scale;
+
+      monitor_scale = meta_window_wayland_get_main_monitor_scale (window);
+      new_geom.x *= monitor_scale;
+      new_geom.y *= monitor_scale;
+      new_geom.width *= monitor_scale;
+      new_geom.height *= monitor_scale;
+    }
 
   /* XXX: Find a better place to store the window geometry offsets. */
   window->custom_frame_extents.left = new_geom.x;
@@ -613,7 +636,10 @@ meta_window_wayland_place_relative_to (MetaWindow *window,
 
   /* Scale the relative coordinate (x, y) from logical pixels to physical
    * pixels. */
-  monitor_scale = other->monitor->scale;
+  if (meta_is_multi_dpi_clutter ())
+    monitor_scale = 1;
+  else
+    monitor_scale = other->monitor->scale;
   meta_window_move_frame (window, FALSE,
                           other->rect.x + (x * monitor_scale),
                           other->rect.y + (y * monitor_scale));

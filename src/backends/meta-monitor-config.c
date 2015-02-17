@@ -36,6 +36,7 @@
 
 #include "boxes-private.h"
 #include "meta-monitor-config.h"
+#include "util-private.h"
 
 #include <string.h>
 #include <clutter/clutter.h>
@@ -1860,6 +1861,12 @@ real_assign_crtcs (CrtcAssignment     *assignment,
                 {
                   width = mode->width;
                   height = mode->height;
+                }
+
+              if (meta_is_multi_dpi_clutter ())
+                {
+                  width /= crtc->scale;
+                  height /= crtc->scale;
                 }
 
               if (width == output_config->rect.width &&

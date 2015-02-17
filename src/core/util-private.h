@@ -28,6 +28,11 @@
 #include <meta/util.h>
 #include <glib/gi18n-lib.h>
 
+static inline gboolean meta_is_multi_dpi_clutter (void)
+{
+  return TRUE;
+}
+
 void     meta_set_verbose (gboolean setting);
 void     meta_set_debugging (gboolean setting);
 void     meta_set_syncing (gboolean setting);

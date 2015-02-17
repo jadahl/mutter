@@ -30,6 +30,7 @@
 #include <stdlib.h>
 
 #include <meta/util.h>
+#include "core/util-private.h"
 
 #define ALL_TRANSFORMS ((1 << (META_MONITOR_TRANSFORM_FLIPPED_270 + 1)) - 1)
 
@@ -110,8 +111,6 @@ meta_monitor_manager_dummy_read_current (MetaMonitorManager *manager)
 
   manager->max_screen_width = 65535;
   manager->max_screen_height = 65535;
-  manager->screen_width = 1024 * num_monitors;
-  manager->screen_height = 768;
 
   manager->modes = g_new0 (MetaMonitorMode, 1);
   manager->n_modes = 1;
@@ -128,19 +127,21 @@ meta_monitor_manager_dummy_read_current (MetaMonitorManager *manager)
 
   for (i = 0; i < num_monitors; i++)
     {
-      int scale = monitor_scales[i];
+      int scale = 1;
+      if (meta_is_multi_dpi_clutter ())
+        scale = monitor_scales[i];
 
       manager->crtcs[i].crtc_id = i + 1;
       manager->crtcs[i].rect.x = current_x;
       manager->crtcs[i].rect.y = 0;
-      manager->crtcs[i].rect.width = manager->modes[0].width;
-      manager->crtcs[i].rect.height = manager->modes[0].height;
+      manager->crtcs[i].rect.width = manager->modes[0].width / scale;
+      manager->crtcs[i].rect.height = manager->modes[0].height / scale;
       manager->crtcs[i].current_mode = &manager->modes[0];
       manager->crtcs[i].transform = META_MONITOR_TRANSFORM_NORMAL;
       manager->crtcs[i].all_transforms = ALL_TRANSFORMS;
       manager->crtcs[i].is_dirty = FALSE;
       manager->crtcs[i].logical_monitor = NULL;
-      manager->crtcs[i].scale = scale;
+      manager->crtcs[i].scale = monitor_scales[i];
 
       current_x += manager->crtcs[i].rect.width;
 
@@ -168,8 +169,11 @@ meta_monitor_manager_dummy_read_current (MetaMonitorManager *manager)
       manager->outputs[i].backlight_min = 0;
       manager->outputs[i].backlight_max = 0;
       manager->outputs[i].connector_type = META_CONNECTOR_TYPE_LVDS;
-      manager->outputs[i].scale = scale;
+      manager->outputs[i].scale = monitor_scales[i];
     }
+
+  manager->screen_width = current_x;
+  manager->screen_height = 768;
 }
 
 static void
@@ -214,6 +218,12 @@ meta_monitor_manager_dummy_apply_config (MetaMonitorManager *manager,
             {
               width = mode->width;
               height = mode->height;
+            }
+
+          if (meta_is_multi_dpi_clutter ())
+            {
+              width /= crtc->scale;
+              height /= crtc->scale;
             }
 
           crtc->rect.x = crtc_info->x;

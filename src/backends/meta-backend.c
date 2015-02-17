@@ -283,6 +283,42 @@ meta_backend_real_post_init (MetaBackend *backend)
   }
 
   priv->input_settings = meta_input_settings_create ();
+
+  {
+    ClutterStage *stage;
+    ClutterStageOutput *stage_outputs;
+    MetaMonitorManager *manager = priv->monitor_manager;
+    guint i, j;
+    int n_active_outputs;
+
+    stage = CLUTTER_STAGE (priv->stage);
+
+    for (i = 0; i < manager->n_outputs; i++)
+      {
+        if (manager->outputs[i].crtc != NULL)
+          n_active_outputs++;
+      }
+
+    stage_outputs = g_new0 (ClutterStageOutput, n_active_outputs);
+    j = 0;
+    for (i = 0; i < manager->n_outputs; i++)
+      {
+        MetaOutput *output = &manager->outputs[i];
+        MetaCRTC *crtc = output->crtc;
+
+        if (crtc == NULL)
+          continue;
+
+        stage_outputs[j++] = (ClutterStageOutput) {
+          .x = crtc->rect.x,
+          .y = crtc->rect.y,
+          .width = crtc->rect.width,
+          .height = crtc->rect.height,
+          .scale = output->scale == 0 ? 1 : output->scale,
+        };
+      }
+    clutter_stage_set_outputs (stage, stage_outputs, manager->n_crtcs);
+  }
 }
 
 static MetaCursorRenderer *

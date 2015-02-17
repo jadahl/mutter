@@ -33,6 +33,8 @@
 #include "meta-backend-x11.h"
 #include "meta-stage.h"
 
+#include "core/util-private.h"
+
 struct _MetaCursorRendererX11Private
 {
   gboolean server_cursor_visible;
@@ -108,6 +110,10 @@ static gboolean
 meta_cursor_renderer_x11_update_cursor (MetaCursorRenderer *renderer,
                                         MetaCursorSprite *cursor_sprite)
 {
+  /* FIXME: This is just to test cursor drawing multi DPI. */
+  if (meta_is_multi_dpi_clutter ())
+    return FALSE;
+
   MetaCursorRendererX11 *x11 = META_CURSOR_RENDERER_X11 (renderer);
   MetaCursorRendererX11Private *priv = meta_cursor_renderer_x11_get_instance_private (x11);
 

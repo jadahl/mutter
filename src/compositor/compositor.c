@@ -1053,10 +1053,10 @@ pre_paint_windows (MetaCompositor *compositor)
   if (compositor->onscreen == NULL)
     {
       compositor->onscreen = COGL_ONSCREEN (cogl_get_draw_framebuffer ());
-      compositor->frame_closure = cogl_onscreen_add_frame_callback (compositor->onscreen,
-                                                                    frame_callback,
-                                                                    compositor,
-                                                                    NULL);
+      compositor->frame_closure =
+        clutter_stage_add_frame_callback (CLUTTER_STAGE (compositor->stage),
+                                          frame_callback,
+                                          compositor);
     }
 
   if (compositor->windows == NULL)

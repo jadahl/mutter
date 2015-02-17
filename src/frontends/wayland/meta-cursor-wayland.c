@@ -32,6 +32,8 @@
 #include "wayland/meta-wayland-surface.h"
 #include "wayland/meta-wayland-buffer.h"
 
+#include "core/util-private.h"
+
 typedef struct
 {
   MetaRectangle current_rect;
@@ -145,12 +147,19 @@ meta_cursor_sprite_wayland_update_position (MetaCursorSprite *cursor_sprite,
   monitor_scale = monitor ? monitor->scale : priv->monitor_scale;
   if (priv->surface)
     {
-      image_scale = (float)monitor->scale / priv->surface->scale;
+      if (meta_is_multi_dpi_clutter ())
+        image_scale = 1.0 / priv->surface->scale;
+      else
+        image_scale = (float)monitor_scale / priv->surface->scale;
     }
   else
     {
-      /* We always load the correct size, so we never scale in this case. */
-      image_scale = 1;
+      if (meta_is_multi_dpi_clutter ())
+        image_scale = 1.0 / monitor_scale;
+      else
+        /* We always load the correct size, so we never scale in this case. */
+        image_scale = 1;
+
       if (priv->monitor_scale != monitor_scale)
         meta_cursor_sprite_load_from_theme (cursor_sprite, monitor_scale);
     }

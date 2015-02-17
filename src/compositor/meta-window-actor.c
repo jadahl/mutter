@@ -670,6 +670,7 @@ static void
 assign_frame_counter_to_frames (MetaWindowActor *self)
 {
   MetaWindowActorPrivate *priv = self->priv;
+  MetaCompositor *compositor = priv->compositor;
   GList *l;
 
   /* If the window is obscured, then we're expecting to deal with sending
@@ -684,8 +685,8 @@ assign_frame_counter_to_frames (MetaWindowActor *self)
 
       if (frame->frame_counter == -1)
         {
-          CoglOnscreen *onscreen = COGL_ONSCREEN (cogl_get_draw_framebuffer());
-          frame->frame_counter = cogl_onscreen_get_frame_counter (onscreen);
+          frame->frame_counter =
+            clutter_stage_get_frame_counter (CLUTTER_STAGE (compositor->stage));
         }
     }
 }
