@@ -44,4 +44,15 @@ MetaCursor meta_cursor_sprite_get_meta_cursor (MetaCursorSprite *cursor);
 Cursor meta_cursor_create_x_cursor (Display    *xdisplay,
                                     MetaCursor  cursor);
 
+CoglTexture *meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *cursor,
+                                                  int              *hot_x,
+                                                  int              *hot_y);
+
+#ifdef HAVE_NATIVE_BACKEND
+struct gbm_bo *meta_cursor_sprite_get_gbm_bo (MetaCursorSprite *cursor,
+                                              int              *hot_x,
+                                              int              *hot_y);
+#endif
+
+
 #endif /* META_CURSOR_H */

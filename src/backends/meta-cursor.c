@@ -30,6 +30,7 @@
 #include "meta-backend-private.h"
 
 #ifdef HAVE_NATIVE_BACKEND
+#include <gbm.h>
 #include "backends/native/meta-cursor-renderer-native.h"
 #endif
 
