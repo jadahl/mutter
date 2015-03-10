@@ -43,8 +43,8 @@
 #include <cogl/cogl-wayland-server.h>
 #endif
 
-MetaCursorReference *
-meta_cursor_reference_ref (MetaCursorReference *self)
+MetaCursorSprite *
+meta_cursor_sprite_ref (MetaCursorSprite *self)
 {
   g_assert (self->ref_count > 0);
   self->ref_count++;
@@ -65,19 +65,19 @@ meta_cursor_image_free (MetaCursorImage *image)
 }
 
 static void
-meta_cursor_reference_free (MetaCursorReference *self)
+meta_cursor_sprite_free (MetaCursorSprite *self)
 {
   meta_cursor_image_free (&self->image);
-  g_slice_free (MetaCursorReference, self);
+  g_slice_free (MetaCursorSprite, self);
 }
 
 void
-meta_cursor_reference_unref (MetaCursorReference *self)
+meta_cursor_sprite_unref (MetaCursorSprite *self)
 {
   self->ref_count--;
 
   if (self->ref_count == 0)
-    meta_cursor_reference_free (self);
+    meta_cursor_sprite_free (self);
 }
 
 static const char *
@@ -257,7 +257,7 @@ meta_cursor_image_load_from_xcursor_image (MetaCursorImage   *image,
 }
 
 static void
-load_cursor_image (MetaCursorReference *cursor)
+load_cursor_image (MetaCursorSprite *cursor)
 {
   XcursorImage *image;
 
@@ -274,10 +274,10 @@ load_cursor_image (MetaCursorReference *cursor)
   XcursorImageDestroy (image);
 }
 
-MetaCursorReference *
-meta_cursor_reference_from_theme (MetaCursor cursor)
+MetaCursorSprite *
+meta_cursor_sprite_from_theme (MetaCursor cursor)
 {
-  MetaCursorReference *self = g_slice_new0 (MetaCursorReference);
+  MetaCursorSprite *self = g_slice_new0 (MetaCursorSprite);
   self->ref_count = 1;
   self->cursor = cursor;
   return self;
@@ -373,14 +373,14 @@ meta_cursor_image_load_from_buffer (MetaCursorImage    *image,
 #endif
 }
 
-MetaCursorReference *
-meta_cursor_reference_from_buffer (struct wl_resource *buffer,
-                                   int                 hot_x,
-                                   int                 hot_y)
+MetaCursorSprite *
+meta_cursor_sprite_from_buffer (struct wl_resource *buffer,
+                                int                 hot_x,
+                                int                 hot_y)
 {
-  MetaCursorReference *self;
+  MetaCursorSprite *self;
 
-  self = g_slice_new0 (MetaCursorReference);
+  self = g_slice_new0 (MetaCursorSprite);
   self->ref_count = 1;
   meta_cursor_image_load_from_buffer (&self->image, buffer, hot_x, hot_y);
 
@@ -389,9 +389,9 @@ meta_cursor_reference_from_buffer (struct wl_resource *buffer,
 #endif
 
 CoglTexture *
-meta_cursor_reference_get_cogl_texture (MetaCursorReference *cursor,
-                                        int                 *hot_x,
-                                        int                 *hot_y)
+meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *cursor,
+                                     int              *hot_x,
+                                     int              *hot_y)
 {
   if (!cursor->image.texture)
     load_cursor_image (cursor);
@@ -406,9 +406,9 @@ meta_cursor_reference_get_cogl_texture (MetaCursorReference *cursor,
 
 #ifdef HAVE_NATIVE_BACKEND
 struct gbm_bo *
-meta_cursor_reference_get_gbm_bo (MetaCursorReference *cursor,
-                                  int                 *hot_x,
-                                  int                 *hot_y)
+meta_cursor_sprite_get_gbm_bo (MetaCursorSprite *cursor,
+                               int              *hot_x,
+                               int              *hot_y)
 {
   if (!cursor->image.bo)
     load_cursor_image (cursor);
@@ -422,7 +422,7 @@ meta_cursor_reference_get_gbm_bo (MetaCursorReference *cursor,
 #endif
 
 MetaCursor
-meta_cursor_reference_get_meta_cursor (MetaCursorReference *cursor)
+meta_cursor_sprite_get_meta_cursor (MetaCursorSprite *cursor)
 {
   return cursor->cursor;
 }

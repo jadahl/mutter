@@ -56,13 +56,13 @@ GType meta_cursor_renderer_get_type (void) G_GNUC_CONST;
 
 MetaCursorRenderer * meta_cursor_renderer_new (void);
 
-void meta_cursor_renderer_set_cursor (MetaCursorRenderer  *renderer,
-                                      MetaCursorReference *cursor);
+void meta_cursor_renderer_set_cursor (MetaCursorRenderer *renderer,
+                                      MetaCursorSprite   *cursor);
 
 void meta_cursor_renderer_set_position (MetaCursorRenderer *renderer,
                                         int x, int y);
 
-MetaCursorReference * meta_cursor_renderer_get_cursor (MetaCursorRenderer *renderer);
+MetaCursorSprite * meta_cursor_renderer_get_cursor (MetaCursorRenderer *renderer);
 const MetaRectangle * meta_cursor_renderer_get_rect (MetaCursorRenderer *renderer);
 
 #endif /* META_CURSOR_RENDERER_H */

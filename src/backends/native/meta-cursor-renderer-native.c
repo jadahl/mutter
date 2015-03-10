@@ -68,7 +68,7 @@ meta_cursor_renderer_native_finalize (GObject *object)
 static void
 set_crtc_cursor (MetaCursorRendererNative *native,
                  MetaCRTC                 *crtc,
-                 MetaCursorReference      *cursor,
+                 MetaCursorSprite         *cursor,
                  gboolean                  force)
 {
   MetaCursorRendererNativePrivate *priv = meta_cursor_renderer_native_get_instance_private (native);
@@ -84,7 +84,7 @@ set_crtc_cursor (MetaCursorRendererNative *native,
       union gbm_bo_handle handle;
       int hot_x, hot_y;
 
-      bo = meta_cursor_reference_get_gbm_bo (cursor, &hot_x, &hot_y);
+      bo = meta_cursor_sprite_get_gbm_bo (cursor, &hot_x, &hot_y);
 
       handle = gbm_bo_get_handle (bo);
       drmModeSetCursor2 (priv->drm_fd, crtc->crtc_id, handle.u32,
@@ -103,7 +103,7 @@ update_hw_cursor (MetaCursorRendererNative *native,
   MetaCursorRendererNativePrivate *priv = meta_cursor_renderer_native_get_instance_private (native);
   MetaCursorRenderer *renderer = META_CURSOR_RENDERER (native);
   const MetaRectangle *cursor_rect = meta_cursor_renderer_get_rect (renderer);
-  MetaCursorReference *cursor = meta_cursor_renderer_get_cursor (renderer);
+  MetaCursorSprite *cursor = meta_cursor_renderer_get_cursor (renderer);
   MetaMonitorManager *monitors;
   MetaCRTC *crtcs;
   unsigned int i, n_crtcs;
@@ -114,7 +114,7 @@ update_hw_cursor (MetaCursorRendererNative *native,
   for (i = 0; i < n_crtcs; i++)
     {
       gboolean crtc_should_have_cursor;
-      MetaCursorReference *crtc_cursor;
+      MetaCursorSprite *crtc_cursor;
       MetaRectangle *crtc_rect;
 
       crtc_rect = &crtcs[i].rect;
@@ -139,10 +139,10 @@ update_hw_cursor (MetaCursorRendererNative *native,
 static gboolean
 should_have_hw_cursor (MetaCursorRenderer *renderer)
 {
-  MetaCursorReference *cursor = meta_cursor_renderer_get_cursor (renderer);
+  MetaCursorSprite *cursor = meta_cursor_renderer_get_cursor (renderer);
 
   if (cursor)
-    return (meta_cursor_reference_get_gbm_bo (cursor, NULL, NULL) != NULL);
+    return (meta_cursor_sprite_get_gbm_bo (cursor, NULL, NULL) != NULL);
   else
     return FALSE;
 }

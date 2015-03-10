@@ -54,7 +54,7 @@ enum {
 
 static guint signals[LAST_SIGNAL];
 
-static MetaCursorReference *
+static MetaCursorSprite *
 get_displayed_cursor (MetaCursorTracker *tracker)
 {
   MetaDisplay *display = meta_get_display ();
@@ -80,14 +80,14 @@ update_displayed_cursor (MetaCursorTracker *tracker)
 static void
 sync_cursor (MetaCursorTracker *tracker)
 {
-  MetaCursorReference *displayed_cursor = get_displayed_cursor (tracker);
+  MetaCursorSprite *displayed_cursor = get_displayed_cursor (tracker);
 
   if (tracker->displayed_cursor == displayed_cursor)
     return;
 
-  g_clear_pointer (&tracker->displayed_cursor, meta_cursor_reference_unref);
+  g_clear_pointer (&tracker->displayed_cursor, meta_cursor_sprite_unref);
   if (displayed_cursor)
-    tracker->displayed_cursor = meta_cursor_reference_ref (displayed_cursor);
+    tracker->displayed_cursor = meta_cursor_sprite_ref (displayed_cursor);
 
   update_displayed_cursor (tracker);
   g_signal_emit (tracker, signals[CURSOR_CHANGED], 0);
@@ -108,9 +108,9 @@ meta_cursor_tracker_finalize (GObject *object)
   MetaCursorTracker *self = META_CURSOR_TRACKER (object);
 
   if (self->displayed_cursor)
-    meta_cursor_reference_unref (self->displayed_cursor);
+    meta_cursor_sprite_unref (self->displayed_cursor);
   if (self->root_cursor)
-    meta_cursor_reference_unref (self->root_cursor);
+    meta_cursor_sprite_unref (self->root_cursor);
 
   G_OBJECT_CLASS (meta_cursor_tracker_parent_class)->finalize (object);
 }
@@ -156,13 +156,13 @@ meta_cursor_tracker_get_for_screen (MetaScreen *screen)
 }
 
 static void
-set_window_cursor (MetaCursorTracker   *tracker,
-                   gboolean             has_cursor,
-                   MetaCursorReference *cursor)
+set_window_cursor (MetaCursorTracker *tracker,
+                   gboolean           has_cursor,
+                   MetaCursorSprite  *cursor)
 {
-  g_clear_pointer (&tracker->window_cursor, meta_cursor_reference_unref);
+  g_clear_pointer (&tracker->window_cursor, meta_cursor_sprite_unref);
   if (cursor)
-    tracker->window_cursor = meta_cursor_reference_ref (cursor);
+    tracker->window_cursor = meta_cursor_sprite_ref (cursor);
   tracker->has_window_cursor = has_cursor;
   sync_cursor (tracker);
 }
@@ -184,19 +184,19 @@ meta_cursor_tracker_handle_xevent (MetaCursorTracker *tracker,
   if (notify_event->subtype != XFixesDisplayCursorNotify)
     return FALSE;
 
-  g_clear_pointer (&tracker->xfixes_cursor, meta_cursor_reference_unref);
+  g_clear_pointer (&tracker->xfixes_cursor, meta_cursor_sprite_unref);
 
   return TRUE;
 }
 
-static MetaCursorReference *
-meta_cursor_reference_take_texture (CoglTexture2D *texture,
-                                    int            hot_x,
-                                    int            hot_y)
+static MetaCursorSprite *
+meta_cursor_sprite_take_texture (CoglTexture2D *texture,
+                                 int            hot_x,
+                                 int            hot_y)
 {
-  MetaCursorReference *self;
+  MetaCursorSprite *self;
 
-  self = g_slice_new0 (MetaCursorReference);
+  self = g_slice_new0 (MetaCursorSprite);
   self->ref_count = 1;
   self->image.texture = texture;
   self->image.hot_x = hot_x;
@@ -262,9 +262,10 @@ ensure_xfixes_cursor (MetaCursorTracker *tracker)
 
   if (sprite != NULL)
     {
-      MetaCursorReference *cursor = meta_cursor_reference_take_texture (sprite,
-                                                                        cursor_image->xhot,
-                                                                        cursor_image->yhot);
+      MetaCursorSprite *cursor =
+        meta_cursor_sprite_take_texture (sprite,
+                                         cursor_image->xhot,
+                                         cursor_image->yhot);
       tracker->xfixes_cursor = cursor;
     }
   XFree (cursor_image);
@@ -278,7 +279,7 @@ ensure_xfixes_cursor (MetaCursorTracker *tracker)
 CoglTexture *
 meta_cursor_tracker_get_sprite (MetaCursorTracker *tracker)
 {
-  MetaCursorReference *cursor;
+  MetaCursorSprite *cursor;
 
   g_return_val_if_fail (META_IS_CURSOR_TRACKER (tracker), NULL);
 
@@ -293,7 +294,7 @@ meta_cursor_tracker_get_sprite (MetaCursorTracker *tracker)
     }
 
   if (cursor)
-    return meta_cursor_reference_get_cogl_texture (cursor, NULL, NULL);
+    return meta_cursor_sprite_get_cogl_texture (cursor, NULL, NULL);
   else
     return NULL;
 }
@@ -310,7 +311,7 @@ meta_cursor_tracker_get_hot (MetaCursorTracker *tracker,
                              int               *x,
                              int               *y)
 {
-  MetaCursorReference *cursor;
+  MetaCursorSprite *cursor;
 
   g_return_if_fail (META_IS_CURSOR_TRACKER (tracker));
 
@@ -325,7 +326,7 @@ meta_cursor_tracker_get_hot (MetaCursorTracker *tracker,
     }
 
   if (cursor)
-    meta_cursor_reference_get_cogl_texture (cursor, x, y);
+    meta_cursor_sprite_get_cogl_texture (cursor, x, y);
   else
     {
       if (x)
@@ -336,8 +337,8 @@ meta_cursor_tracker_get_hot (MetaCursorTracker *tracker,
 }
 
 void
-meta_cursor_tracker_set_window_cursor (MetaCursorTracker   *tracker,
-                                       MetaCursorReference *cursor)
+meta_cursor_tracker_set_window_cursor (MetaCursorTracker *tracker,
+                                       MetaCursorSprite  *cursor)
 {
   set_window_cursor (tracker, TRUE, cursor);
 }
@@ -349,12 +350,12 @@ meta_cursor_tracker_unset_window_cursor (MetaCursorTracker *tracker)
 }
 
 void
-meta_cursor_tracker_set_root_cursor (MetaCursorTracker   *tracker,
-                                     MetaCursorReference *cursor)
+meta_cursor_tracker_set_root_cursor (MetaCursorTracker *tracker,
+                                     MetaCursorSprite  *cursor)
 {
-  g_clear_pointer (&tracker->root_cursor, meta_cursor_reference_unref);
+  g_clear_pointer (&tracker->root_cursor, meta_cursor_sprite_unref);
   if (cursor)
-    tracker->root_cursor = meta_cursor_reference_ref (cursor);
+    tracker->root_cursor = meta_cursor_sprite_ref (cursor);
 
   sync_cursor (tracker);
 }
@@ -437,7 +438,7 @@ meta_cursor_tracker_set_pointer_visible (MetaCursorTracker *tracker,
   sync_cursor (tracker);
 }
 
-MetaCursorReference *
+MetaCursorSprite *
 meta_cursor_tracker_get_displayed_cursor (MetaCursorTracker *tracker)
 {
   return tracker->displayed_cursor;
