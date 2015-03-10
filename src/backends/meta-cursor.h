@@ -24,9 +24,6 @@
 
 typedef struct _MetaCursorSprite MetaCursorSprite;
 
-MetaCursorSprite * meta_cursor_sprite_ref (MetaCursorSprite *cursor);
-void meta_cursor_sprite_unref (MetaCursorSprite *cursor);
-
 #include <meta/common.h>
 
 MetaCursorSprite * meta_cursor_sprite_from_theme  (MetaCursor          cursor);
@@ -37,6 +34,10 @@ MetaCursorSprite * meta_cursor_sprite_from_buffer (struct wl_resource *buffer,
                                                    int                 hot_x,
                                                    int                 hot_y);
 #endif
+
+MetaCursorSprite * meta_cursor_sprite_from_texture (CoglTexture2D *texture,
+                                                    int            hot_x,
+                                                    int            hot_y);
 
 MetaCursor meta_cursor_sprite_get_meta_cursor (MetaCursorSprite *cursor);
 

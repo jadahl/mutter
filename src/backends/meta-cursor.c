@@ -43,14 +43,23 @@
 #include <cogl/cogl-wayland-server.h>
 #endif
 
-MetaCursorSprite *
-meta_cursor_sprite_ref (MetaCursorSprite *self)
+typedef struct
 {
-  g_assert (self->ref_count > 0);
-  self->ref_count++;
+  CoglTexture2D *texture;
+  int hot_x, hot_y;
 
-  return self;
-}
+#ifdef HAVE_NATIVE_BACKEND
+  struct gbm_bo *bo;
+#endif
+} MetaCursorImage;
+
+struct _MetaCursorSpritePrivate
+{
+  MetaCursor cursor;
+  MetaCursorImage image;
+};
+
+G_DEFINE_TYPE_WITH_PRIVATE (MetaCursorSprite, meta_cursor_sprite, G_TYPE_OBJECT)
 
 static void
 meta_cursor_image_free (MetaCursorImage *image)
@@ -62,22 +71,6 @@ meta_cursor_image_free (MetaCursorImage *image)
   if (image->bo)
     gbm_bo_destroy (image->bo);
 #endif
-}
-
-static void
-meta_cursor_sprite_free (MetaCursorSprite *self)
-{
-  meta_cursor_image_free (&self->image);
-  g_slice_free (MetaCursorSprite, self);
-}
-
-void
-meta_cursor_sprite_unref (MetaCursorSprite *self)
-{
-  self->ref_count--;
-
-  if (self->ref_count == 0)
-    meta_cursor_sprite_free (self);
 }
 
 static const char *
@@ -257,29 +250,55 @@ meta_cursor_image_load_from_xcursor_image (MetaCursorImage   *image,
 }
 
 static void
-load_cursor_image (MetaCursorSprite *cursor)
+load_cursor_image (MetaCursorSprite *self)
 {
+  MetaCursorSpritePrivate *priv = meta_cursor_sprite_get_instance_private (self);
   XcursorImage *image;
 
   /* Either cursors are loaded from X cursors or buffers. Since
    * buffers are converted over immediately, we can make sure to
    * load this directly. */
-  g_assert (cursor->cursor != META_CURSOR_NONE);
+  g_assert (priv->cursor != META_CURSOR_NONE);
 
-  image = load_cursor_on_client (cursor->cursor);
+  image = load_cursor_on_client (priv->cursor);
   if (!image)
     return;
 
-  meta_cursor_image_load_from_xcursor_image (&cursor->image, image);
+  meta_cursor_image_load_from_xcursor_image (&priv->image, image);
   XcursorImageDestroy (image);
 }
 
 MetaCursorSprite *
 meta_cursor_sprite_from_theme (MetaCursor cursor)
 {
-  MetaCursorSprite *self = g_slice_new0 (MetaCursorSprite);
-  self->ref_count = 1;
-  self->cursor = cursor;
+  MetaCursorSprite *self;
+  MetaCursorSpritePrivate *priv;
+
+  self = g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
+  priv = meta_cursor_sprite_get_instance_private (self);
+
+  priv->cursor = cursor;
+
+  return self;
+}
+
+MetaCursorSprite *
+meta_cursor_sprite_from_texture (CoglTexture2D *texture,
+                                 int            hot_x,
+                                 int            hot_y)
+{
+  MetaCursorSprite *self;
+  MetaCursorSpritePrivate *priv;
+
+  self = g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
+  priv = meta_cursor_sprite_get_instance_private (self);
+
+  cogl_object_ref (texture);
+
+  priv->image.texture = texture;
+  priv->image.hot_x = hot_x;
+  priv->image.hot_y = hot_y;
+
   return self;
 }
 
@@ -379,50 +398,82 @@ meta_cursor_sprite_from_buffer (struct wl_resource *buffer,
                                 int                 hot_y)
 {
   MetaCursorSprite *self;
+  MetaCursorSpritePrivate *priv;
 
-  self = g_slice_new0 (MetaCursorSprite);
-  self->ref_count = 1;
-  meta_cursor_image_load_from_buffer (&self->image, buffer, hot_x, hot_y);
+  self = g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
+  priv = meta_cursor_sprite_get_instance_private (self);
+
+  meta_cursor_image_load_from_buffer (&priv->image, buffer, hot_x, hot_y);
 
   return self;
 }
 #endif
 
 CoglTexture *
-meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *cursor,
+meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *self,
                                      int              *hot_x,
                                      int              *hot_y)
 {
-  if (!cursor->image.texture)
-    load_cursor_image (cursor);
+  MetaCursorSpritePrivate *priv = meta_cursor_sprite_get_instance_private (self);
+
+  if (!priv->image.texture)
+    load_cursor_image (self);
 
   if (hot_x)
-    *hot_x = cursor->image.hot_x;
+    *hot_x = priv->image.hot_x;
   if (hot_y)
-    *hot_y = cursor->image.hot_y;
+    *hot_y = priv->image.hot_y;
 
-  return COGL_TEXTURE (cursor->image.texture);
+  return COGL_TEXTURE (priv->image.texture);
 }
 
 #ifdef HAVE_NATIVE_BACKEND
 struct gbm_bo *
-meta_cursor_sprite_get_gbm_bo (MetaCursorSprite *cursor,
+meta_cursor_sprite_get_gbm_bo (MetaCursorSprite *self,
                                int              *hot_x,
                                int              *hot_y)
 {
-  if (!cursor->image.bo)
-    load_cursor_image (cursor);
+  MetaCursorSpritePrivate *priv = meta_cursor_sprite_get_instance_private (self);
+
+  if (!priv->image.bo)
+    load_cursor_image (self);
 
   if (hot_x)
-    *hot_x = cursor->image.hot_x;
+    *hot_x = priv->image.hot_x;
   if (hot_y)
-    *hot_y = cursor->image.hot_y;
-  return cursor->image.bo;
+    *hot_y = priv->image.hot_y;
+  return priv->image.bo;
 }
 #endif
 
 MetaCursor
-meta_cursor_sprite_get_meta_cursor (MetaCursorSprite *cursor)
+meta_cursor_sprite_get_meta_cursor (MetaCursorSprite *self)
 {
-  return cursor->cursor;
+  MetaCursorSpritePrivate *priv = meta_cursor_sprite_get_instance_private (self);
+
+  return priv->cursor;
+}
+
+static void
+meta_cursor_sprite_init (MetaCursorSprite *self)
+{
+}
+
+static void
+meta_cursor_sprite_finalize (GObject *object)
+{
+  MetaCursorSprite *self = META_CURSOR_SPRITE (object);
+  MetaCursorSpritePrivate *priv = meta_cursor_sprite_get_instance_private (self);
+
+  meta_cursor_image_free (&priv->image);
+
+  G_OBJECT_CLASS (meta_cursor_sprite_parent_class)->finalize (object);
+}
+
+static void
+meta_cursor_sprite_class_init (MetaCursorSpriteClass *klass)
+{
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->finalize = meta_cursor_sprite_finalize;
 }

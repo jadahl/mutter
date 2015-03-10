@@ -30,21 +30,28 @@
 #include <gbm.h>
 #endif
 
-typedef struct {
-  CoglTexture2D *texture;
-  int hot_x, hot_y;
+#define META_TYPE_CURSOR_SPRITE            (meta_cursor_sprite_get_type ())
+#define META_CURSOR_SPRITE(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), META_TYPE_CURSOR_SPRITE, MetaCursorSprite))
+#define META_CURSOR_SPRITE_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass),  META_TYPE_CURSOR_SPRITE, MetaCursorSpriteClass))
+#define META_IS_CURSOR_SPRITE(obj)         (G_TYPE_CHECK_INSTANCE_TYPE ((obj), META_TYPE_CURSOR_SPRITE))
+#define META_IS_CURSOR_SPRITE_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((klass),  META_TYPE_CURSOR_SPRITE))
+#define META_CURSOR_SPRITE_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj),  META_TYPE_CURSOR_SPRITE, MetaCursorSpriteClass))
 
-#ifdef HAVE_NATIVE_BACKEND
-  struct gbm_bo *bo;
-#endif
-} MetaCursorImage;
+typedef struct _MetaCursorSprite        MetaCursorSprite;
+typedef struct _MetaCursorSpritePrivate MetaCursorSpritePrivate;
+typedef struct _MetaCursorSpriteClass   MetaCursorSpriteClass;
 
-struct _MetaCursorSprite {
-  int ref_count;
-
-  MetaCursor cursor;
-  MetaCursorImage image;
+struct _MetaCursorSprite
+{
+  GObject parent;
 };
+
+struct _MetaCursorSpriteClass
+{
+  GObjectClass parent_class;
+};
+
+GType meta_cursor_sprite_get_type (void) G_GNUC_CONST;
 
 CoglTexture *meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *cursor,
                                                   int              *hot_x,

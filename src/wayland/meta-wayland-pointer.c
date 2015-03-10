@@ -650,7 +650,7 @@ meta_wayland_pointer_update_cursor_surface (MetaWaylandPointer *pointer)
       meta_cursor_tracker_set_window_cursor (pointer->cursor_tracker, cursor);
 
       if (cursor)
-        meta_cursor_sprite_unref (cursor);
+        g_object_unref (cursor);
     }
   else
     {
