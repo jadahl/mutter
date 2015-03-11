@@ -63,9 +63,6 @@ libmutter_la_SOURCES =				\
 	backends/meta-backend-private.h		\
 	backends/meta-barrier.c			\
 	backends/meta-barrier-private.h		\
-	backends/meta-cursor.c			\
-	backends/meta-cursor.h			\
-	backends/meta-cursor-private.h		\
 	backends/meta-cursor-tracker.c		\
 	backends/meta-cursor-tracker-private.h	\
 	backends/meta-cursor-renderer.c		\
@@ -100,6 +97,9 @@ libmutter_la_SOURCES =				\
 	backends/x11/meta-input-settings-x11.h		\
 	backends/x11/meta-monitor-manager-xrandr.c	\
 	backends/x11/meta-monitor-manager-xrandr.h	\
+	frontends/meta-cursor.c			\
+	frontends/meta-cursor.h			\
+	frontends/meta-cursor-private.h		\
 	core/meta-accel-parse.c			\
 	core/meta-accel-parse.h			\
 	meta/barrier.h				\

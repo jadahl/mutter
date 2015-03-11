@@ -24,7 +24,7 @@
 
 #include <meta/meta-cursor-tracker.h>
 
-#include "meta-cursor.h"
+#include "frontends/meta-cursor.h"
 #include "meta-cursor-renderer.h"
 
 struct _MetaCursorTracker {

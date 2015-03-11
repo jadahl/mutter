@@ -29,7 +29,7 @@
 #include <X11/Xcursor/Xcursor.h>
 
 #include <meta/screen.h>
-#include "meta-cursor.h"
+#include "frontends/meta-cursor.h"
 
 #define META_TYPE_CURSOR_RENDERER            (meta_cursor_renderer_get_type ())
 #define META_CURSOR_RENDERER(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), META_TYPE_CURSOR_RENDERER, MetaCursorRenderer))

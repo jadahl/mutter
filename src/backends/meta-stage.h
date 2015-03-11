@@ -22,7 +22,7 @@
 
 #include <clutter/clutter.h>
 
-#include "meta-cursor.h"
+#include "frontends/meta-cursor.h"
 #include <meta/boxes.h>
 
 G_BEGIN_DECLS
