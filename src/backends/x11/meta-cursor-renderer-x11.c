@@ -83,12 +83,34 @@ meta_cursor_renderer_x11_update_cursor (MetaCursorRenderer *renderer)
   return priv->server_cursor_visible;
 }
 
+#ifdef HAVE_WAYLAND
+static void
+meta_cursor_renderer_x11_realize_cursor_from_wl_buffer (MetaCursorRenderer *renderer,
+                                                        MetaCursorSprite *cursor_sprite,
+                                                        struct wl_resource *buffer)
+{
+}
+#endif
+
+static void
+meta_cursor_renderer_x11_realize_cursor_from_xcursor (MetaCursorRenderer *renderer,
+                                                      MetaCursorSprite *cursor_sprite,
+                                                      XcursorImage *xc_image)
+{
+}
+
 static void
 meta_cursor_renderer_x11_class_init (MetaCursorRendererX11Class *klass)
 {
   MetaCursorRendererClass *renderer_class = META_CURSOR_RENDERER_CLASS (klass);
 
   renderer_class->update_cursor = meta_cursor_renderer_x11_update_cursor;
+#ifdef HAVE_WAYLAND
+  renderer_class->realize_cursor_from_wl_buffer =
+    meta_cursor_renderer_x11_realize_cursor_from_wl_buffer;
+#endif
+  renderer_class->realize_cursor_from_xcursor =
+    meta_cursor_renderer_x11_realize_cursor_from_xcursor;
 }
 
 static void
