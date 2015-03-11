@@ -28,22 +28,13 @@
 #include "display-private.h"
 #include "screen-private.h"
 #include "meta-backend-private.h"
+#include "frontends/wayland/meta-cursor-wayland.h"
 
 #include <string.h>
 
 #include <X11/cursorfont.h>
 #include <X11/extensions/Xfixes.h>
 #include <X11/Xcursor/Xcursor.h>
-
-#ifdef HAVE_WAYLAND
-#include <cogl/cogl-wayland-server.h>
-#endif
-
-typedef struct
-{
-  CoglTexture2D *texture;
-  int hot_x, hot_y;
-} MetaCursorImage;
 
 struct _MetaCursorSpritePrivate
 {
@@ -163,13 +154,22 @@ meta_cursor_image_load_from_xcursor_image (MetaCursorSprite *self,
 }
 
 MetaCursorSprite *
+meta_cursor_sprite_new (void)
+{
+  if (meta_is_wayland_compositor ())
+    return g_object_new (META_TYPE_CURSOR_SPRITE_WAYLAND, NULL);
+  else
+    return g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
+}
+
+MetaCursorSprite *
 meta_cursor_sprite_from_theme (MetaCursor cursor)
 {
   MetaCursorSprite *self;
   MetaCursorSpritePrivate *priv;
   XcursorImage *image;
 
-  self = g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
+  self = meta_cursor_sprite_new ();
   priv = meta_cursor_sprite_get_instance_private (self);
 
   priv->cursor = cursor;
@@ -193,7 +193,9 @@ meta_cursor_sprite_from_texture (CoglTexture2D *texture,
   MetaCursorSprite *self;
   MetaCursorSpritePrivate *priv;
 
-  self = g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
+  g_assert (!meta_is_wayland_compositor ());
+
+  self = meta_cursor_sprite_new ();
   priv = meta_cursor_sprite_get_instance_private (self);
 
   cogl_object_ref (texture);
@@ -204,48 +206,6 @@ meta_cursor_sprite_from_texture (CoglTexture2D *texture,
 
   return self;
 }
-
-#ifdef HAVE_WAYLAND
-static void
-meta_cursor_image_load_from_buffer (MetaCursorSprite   *self,
-                                    struct wl_resource *buffer,
-                                    int                 hot_x,
-                                    int                 hot_y)
-{
-  MetaCursorSpritePrivate *priv =
-    meta_cursor_sprite_get_instance_private (self);
-  MetaCursorImage *image = &priv->image;
-  MetaBackend *meta_backend = meta_get_backend ();
-  MetaCursorRenderer *renderer =
-    meta_backend_get_cursor_renderer (meta_backend);
-  ClutterBackend *backend;
-  CoglContext *cogl_context;
-
-  image->hot_x = hot_x;
-  image->hot_y = hot_y;
-
-  backend = clutter_get_default_backend ();
-  cogl_context = clutter_backend_get_cogl_context (backend);
-
-  image->texture = cogl_wayland_texture_2d_new_from_buffer (cogl_context, buffer, NULL);
-
-  meta_cursor_renderer_realize_cursor_from_wl_buffer (renderer, self, buffer);
-}
-
-MetaCursorSprite *
-meta_cursor_sprite_from_buffer (struct wl_resource *buffer,
-                                int                 hot_x,
-                                int                 hot_y)
-{
-  MetaCursorSprite *self;
-
-  self = g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
-
-  meta_cursor_image_load_from_buffer (self, buffer, hot_x, hot_y);
-
-  return self;
-}
-#endif
 
 CoglTexture *
 meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *self,
@@ -301,6 +261,15 @@ meta_cursor_sprite_get_height (MetaCursorSprite *self)
     meta_cursor_sprite_get_instance_private (self);
 
   return cogl_texture_get_height (COGL_TEXTURE (priv->image.texture));
+}
+
+MetaCursorImage *
+meta_cursor_sprite_get_image (MetaCursorSprite *self)
+{
+  MetaCursorSpritePrivate *priv =
+    meta_cursor_sprite_get_instance_private (self);
+
+  return &priv->image;
 }
 
 static void

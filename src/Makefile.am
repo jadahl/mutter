@@ -237,6 +237,8 @@ if HAVE_WAYLAND
 libmutter_la_SOURCES +=				\
 	compositor/meta-surface-actor-wayland.c	\
 	compositor/meta-surface-actor-wayland.h	\
+	frontends/wayland/meta-cursor-wayland.c	\
+	frontends/wayland/meta-cursor-wayland.h	\
 	wayland/meta-wayland.c			\
 	wayland/meta-wayland.h			\
 	wayland/meta-wayland-private.h		\

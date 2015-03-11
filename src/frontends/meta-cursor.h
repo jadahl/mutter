@@ -28,13 +28,6 @@ typedef struct _MetaCursorSprite MetaCursorSprite;
 
 MetaCursorSprite * meta_cursor_sprite_from_theme  (MetaCursor          cursor);
 
-#ifdef HAVE_WAYLAND
-#include <wayland-server.h>
-MetaCursorSprite * meta_cursor_sprite_from_buffer (struct wl_resource *buffer,
-                                                   int                 hot_x,
-                                                   int                 hot_y);
-#endif
-
 MetaCursorSprite * meta_cursor_sprite_from_texture (CoglTexture2D *texture,
                                                     int            hot_x,
                                                     int            hot_y);

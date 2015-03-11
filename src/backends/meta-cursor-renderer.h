@@ -27,6 +27,9 @@
 
 #include <glib-object.h>
 #include <X11/Xcursor/Xcursor.h>
+#ifdef HAVE_WAYLAND
+#include <wayland-server.h>
+#endif
 
 #include <meta/screen.h>
 #include "frontends/meta-cursor.h"

@@ -45,6 +45,16 @@ struct _MetaCursorSpriteClass
   GObjectClass parent_class;
 };
 
+typedef struct
+{
+  CoglTexture2D *texture;
+  int hot_x, hot_y;
+} MetaCursorImage;
+
 GType meta_cursor_sprite_get_type (void) G_GNUC_CONST;
+
+MetaCursorSprite * meta_cursor_sprite_new (void);
+
+MetaCursorImage * meta_cursor_sprite_get_image (MetaCursorSprite *self);
 
 #endif /* META_CURSOR_PRIVATE_H */
