@@ -116,6 +116,7 @@ make_logical_config (MetaMonitorManager *manager)
 
           info.number = monitor_infos->len;
           info.rect = crtc->rect;
+          info.scale = 1;
           info.is_primary = FALSE;
           /* This starts true because we want
              is_presentation only if all outputs are
@@ -152,6 +153,7 @@ make_logical_config (MetaMonitorManager *manager)
 
       info = output->crtc->logical_monitor;
 
+      info->scale = output->scale;
       info->is_primary = info->is_primary || output->is_primary;
       info->is_presentation = info->is_presentation && output->is_presentation;
 
