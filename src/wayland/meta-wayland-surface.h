@@ -90,6 +90,14 @@ struct _MetaWaylandSurface
   GList *subsurfaces;
   GHashTable *outputs;
 
+  /* Some times objects depending a MetaWaylandSurface may not safely listen
+   * to the destroy signal of the wl_resource because removing themself from
+   * the signal listener list as a side effect of some other object being
+   * destoryed may cause the emitter to still invoke the listener after it
+   * removed itself. In such cases this destroy signal can be used, until some
+   * better solution is in place. */
+  struct wl_signal destroy_signal;
+
   /* All the pending state that wl_surface.commit will apply. */
   MetaWaylandPendingState pending;
 

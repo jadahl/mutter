@@ -45,6 +45,7 @@ static GQuark quark_cursor_sprite = 0;
 struct _MetaCursorRendererNativePrivate
 {
   gboolean has_hw_cursor;
+  MetaRectangle last_rect;
 
   int drm_fd;
   struct gbm_device *gbm;
@@ -53,6 +54,12 @@ struct _MetaCursorRendererNativePrivate
   uint64_t cursor_height;
 };
 typedef struct _MetaCursorRendererNativePrivate MetaCursorRendererNativePrivate;
+
+typedef struct _MetaCursorNativePrivate
+{
+  guint current_bo;
+  struct gbm_bo *bos[2];
+} MetaCursorNativePrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE (MetaCursorRendererNative, meta_cursor_renderer_native, META_TYPE_CURSOR_RENDERER);
 
@@ -69,25 +76,45 @@ meta_cursor_renderer_native_finalize (GObject *object)
 }
 
 static struct gbm_bo *
-get_cursor_sprite_gbm_bo (MetaCursorSprite *cursor_sprite)
+get_current_cursor_sprite_gbm_bo (MetaCursorSprite *cursor_sprite)
 {
-  return g_object_get_qdata (G_OBJECT (cursor_sprite), quark_cursor_sprite);
+  MetaCursorNativePrivate *cursor_priv =
+    g_object_get_qdata (G_OBJECT (cursor_sprite), quark_cursor_sprite);
+
+   if (!cursor_priv)
+     return NULL;
+
+   return cursor_priv->bos[cursor_priv->current_bo];
 }
 
 static void
-cursor_gbm_bo_free (gpointer data)
+set_current_cursor_sprite_gbm_bo (MetaCursorSprite *cursor_sprite,
+                                  struct gbm_bo *bo)
 {
-  if (!data)
+  MetaCursorNativePrivate *cursor_priv =
+    g_object_get_qdata (G_OBJECT (cursor_sprite), quark_cursor_sprite);
+
+  g_assert (cursor_priv);
+
+  cursor_priv->bos[cursor_priv->current_bo] = bo;
+}
+
+static void
+switch_and_unset_current_cursor_sprite_gbm_bo (MetaCursorSprite *cursor_sprite)
+{
+  MetaCursorNativePrivate *cursor_priv =
+    g_object_get_qdata (G_OBJECT (cursor_sprite), quark_cursor_sprite);
+
+  /* Nothing to switch or unset. */
+  if (!cursor_priv)
     return;
 
-  gbm_bo_destroy ((struct gbm_bo *)data);
-}
-
-static void
-set_cursor_sprite_gbm_bo (MetaCursorSprite *cursor_sprite, struct gbm_bo *bo)
-{
-  g_object_set_qdata_full (G_OBJECT (cursor_sprite), quark_cursor_sprite,
-                           bo, cursor_gbm_bo_free);
+  cursor_priv->current_bo ^= 1;
+  if (cursor_priv->bos[cursor_priv->current_bo])
+    {
+      gbm_bo_destroy (cursor_priv->bos[cursor_priv->current_bo]);
+      cursor_priv->bos[cursor_priv->current_bo] = NULL;
+    }
 }
 
 static void
@@ -98,18 +125,23 @@ set_crtc_cursor (MetaCursorRendererNative *native,
 {
   MetaCursorRendererNativePrivate *priv = meta_cursor_renderer_native_get_instance_private (native);
 
-  if (crtc->cursor == cursor && !force)
+  if (!force && crtc->cursor_renderer_private == NULL && cursor == NULL)
     return;
-
-  crtc->cursor = cursor;
 
   if (cursor)
     {
       struct gbm_bo *bo;
       union gbm_bo_handle handle;
       int hot_x, hot_y;
+      gboolean *dirty;
 
-      bo = get_cursor_sprite_gbm_bo (cursor);
+      bo = get_current_cursor_sprite_gbm_bo (cursor);
+      dirty = gbm_bo_get_user_data (bo);
+      if (!force && bo == crtc->cursor_renderer_private && !*dirty)
+        return;
+      crtc->cursor_renderer_private = bo;
+      *dirty = FALSE;
+
       handle = gbm_bo_get_handle (bo);
       meta_cursor_sprite_get_hotspot (cursor, &hot_x, &hot_y);
 
@@ -119,16 +151,17 @@ set_crtc_cursor (MetaCursorRendererNative *native,
   else
     {
       drmModeSetCursor2 (priv->drm_fd, crtc->crtc_id, 0, 0, 0, 0, 0);
+      crtc->cursor_renderer_private = NULL;
     }
 }
 
 static void
 update_hw_cursor (MetaCursorRendererNative *native,
-                  gboolean                  force)
+                  gboolean                  force,
+                  MetaRectangle            *rect)
 {
   MetaCursorRendererNativePrivate *priv = meta_cursor_renderer_native_get_instance_private (native);
   MetaCursorRenderer *renderer = META_CURSOR_RENDERER (native);
-  const MetaRectangle *cursor_rect = meta_cursor_renderer_get_rect (renderer);
   MetaCursorSprite *cursor = meta_cursor_renderer_get_cursor (renderer);
   MetaMonitorManager *monitors;
   MetaCRTC *crtcs;
@@ -145,7 +178,8 @@ update_hw_cursor (MetaCursorRendererNative *native,
 
       crtc_rect = &crtcs[i].rect;
 
-      crtc_should_have_cursor = (priv->has_hw_cursor && meta_rectangle_overlap (cursor_rect, crtc_rect));
+      crtc_should_have_cursor = (priv->has_hw_cursor &&
+                                 meta_rectangle_overlap (rect, crtc_rect));
       if (crtc_should_have_cursor)
         crtc_cursor = cursor;
       else
@@ -156,31 +190,50 @@ update_hw_cursor (MetaCursorRendererNative *native,
       if (crtc_cursor)
         {
           drmModeMoveCursor (priv->drm_fd, crtcs[i].crtc_id,
-                             cursor_rect->x - crtc_rect->x,
-                             cursor_rect->y - crtc_rect->y);
+                             rect->x - crtc_rect->x,
+                             rect->y - crtc_rect->y);
         }
     }
 }
 
 static gboolean
-should_have_hw_cursor (MetaCursorRenderer *renderer)
+should_have_hw_cursor (MetaCursorRenderer *renderer,
+                       MetaCursorSprite *cursor_sprite,
+                       const MetaRectangle *rect)
 {
-  MetaCursorSprite *cursor = meta_cursor_renderer_get_cursor (renderer);
+  CoglTexture *texture;
 
-  if (cursor)
-    return (get_cursor_sprite_gbm_bo (cursor) != NULL);
-  else
+  if (!cursor_sprite)
     return FALSE;
+
+  texture = meta_cursor_sprite_get_cogl_texture (cursor_sprite);
+  if (!texture)
+    return FALSE;
+
+  if (rect->width != (int)cogl_texture_get_width (texture) ||
+      rect->height != (int)cogl_texture_get_height (texture))
+    return FALSE;
+
+  if (get_current_cursor_sprite_gbm_bo (cursor_sprite) == NULL)
+    return FALSE;
+
+  return TRUE;
 }
 
 static gboolean
-meta_cursor_renderer_native_update_cursor (MetaCursorRenderer *renderer)
+meta_cursor_renderer_native_update_cursor (MetaCursorRenderer *renderer,
+                                           MetaCursorSprite *cursor_sprite)
 {
   MetaCursorRendererNative *native = META_CURSOR_RENDERER_NATIVE (renderer);
   MetaCursorRendererNativePrivate *priv = meta_cursor_renderer_native_get_instance_private (native);
+  MetaRectangle rect = { 0 };
 
-  priv->has_hw_cursor = should_have_hw_cursor (renderer);
-  update_hw_cursor (native, FALSE);
+  if (cursor_sprite)
+    meta_cursor_sprite_get_current_rect (cursor_sprite, &rect);
+
+  priv->has_hw_cursor = should_have_hw_cursor (renderer, cursor_sprite, &rect);
+  update_hw_cursor (native, FALSE, &rect);
+  priv->last_rect = rect;
   return priv->has_hw_cursor;
 }
 
@@ -193,6 +246,43 @@ get_hardware_cursor_size (MetaCursorRendererNative *native,
 
   *width = priv->cursor_width;
   *height = priv->cursor_height;
+}
+
+static void destroy_gbm_bo_user_data (struct gbm_bo *bo, void *user_data)
+{
+  g_slice_free (gboolean, user_data);
+}
+
+static void
+cursor_priv_free (gpointer data)
+{
+  MetaCursorNativePrivate *cursor_priv = data;
+
+  if (!data)
+    return;
+
+  if (cursor_priv->bos[0])
+    gbm_bo_destroy (cursor_priv->bos[0]);
+  if (cursor_priv->bos[1])
+    gbm_bo_destroy (cursor_priv->bos[1]);
+}
+
+static MetaCursorNativePrivate *
+ensure_cursor_priv (MetaCursorSprite *cursor_sprite)
+{
+  MetaCursorNativePrivate *cursor_priv =
+    g_object_get_qdata (G_OBJECT (cursor_sprite), quark_cursor_sprite);
+
+  if (!cursor_priv)
+    {
+      cursor_priv = g_slice_new0 (MetaCursorNativePrivate);
+      g_object_set_qdata_full (G_OBJECT (cursor_sprite),
+                               quark_cursor_sprite,
+                               cursor_priv,
+                               cursor_priv_free);
+    }
+
+  return cursor_priv;
 }
 
 static void
@@ -212,6 +302,7 @@ load_cursor_sprite_gbm_buffer (MetaCursorRendererNative *native,
 
   if (width > cursor_width || height > cursor_height)
     {
+      switch_and_unset_current_cursor_sprite_gbm_bo (cursor_sprite);
       meta_warning ("Invalid theme cursor size (must be at most %ux%u)\n",
                     (unsigned int)cursor_width, (unsigned int)cursor_height);
       return;
@@ -220,23 +311,46 @@ load_cursor_sprite_gbm_buffer (MetaCursorRendererNative *native,
   if (gbm_device_is_format_supported (priv->gbm, gbm_format,
                                       GBM_BO_USE_CURSOR | GBM_BO_USE_WRITE))
     {
+      MetaCursorNativePrivate *cursor_priv;
       struct gbm_bo *bo;
       uint8_t buf[4 * cursor_width * cursor_height];
       uint i;
+      gboolean *dirty;
 
-      bo = gbm_bo_create (priv->gbm, cursor_width, cursor_height,
-                          gbm_format, GBM_BO_USE_CURSOR | GBM_BO_USE_WRITE);
+      cursor_priv = ensure_cursor_priv (cursor_sprite);
+      cursor_priv->current_bo ^= 1;
+
+      bo = get_current_cursor_sprite_gbm_bo (cursor_sprite);
+      if (!bo)
+        {
+          bo = gbm_bo_create (priv->gbm, cursor_width, cursor_height,
+                              gbm_format, GBM_BO_USE_CURSOR | GBM_BO_USE_WRITE);
+          dirty = g_slice_new0 (gboolean);
+          gbm_bo_set_user_data (bo, dirty, destroy_gbm_bo_user_data);
+          set_current_cursor_sprite_gbm_bo (cursor_sprite, bo);
+        }
+      else
+        {
+          g_assert (gbm_format == gbm_bo_get_format (bo));
+          g_assert (cursor_width == gbm_bo_get_width (bo));
+          g_assert (cursor_height == gbm_bo_get_height (bo));
+
+          dirty = gbm_bo_get_user_data (bo);
+        }
+
+      *dirty = TRUE;
 
       memset (buf, 0, sizeof(buf));
       for (i = 0; i < height; i++)
         memcpy (buf + i * 4 * cursor_width, pixels + i * rowstride, width * 4);
 
       gbm_bo_write (bo, buf, cursor_width * cursor_height * 4);
-
-      set_cursor_sprite_gbm_bo (cursor_sprite, bo);
     }
   else
-    meta_warning ("HW cursor for format %d not supported\n", gbm_format);
+    {
+      switch_and_unset_current_cursor_sprite_gbm_bo (cursor_sprite);
+      meta_warning ("HW cursor for format %d not supported\n", gbm_format);
+    }
 }
 
 #ifdef HAVE_WAYLAND
@@ -250,10 +364,12 @@ meta_cursor_renderer_native_realize_cursor_from_wl_buffer (MetaCursorRenderer *r
     meta_cursor_renderer_native_get_instance_private (native);
   uint32_t gbm_format;
   uint64_t cursor_width, cursor_height;
+  CoglTexture *texture;
   uint width, height;
 
-  width = meta_cursor_sprite_get_width (cursor_sprite);
-  height = meta_cursor_sprite_get_height (cursor_sprite);
+  texture = meta_cursor_sprite_get_cogl_texture (cursor_sprite);
+  width = cogl_texture_get_width (texture);
+  height = cogl_texture_get_height (texture);
 
   struct wl_shm_buffer *shm_buffer = wl_shm_buffer_get (buffer);
   if (shm_buffer)
@@ -322,7 +438,8 @@ meta_cursor_renderer_native_realize_cursor_from_wl_buffer (MetaCursorRenderer *r
           return;
         }
 
-      set_cursor_sprite_gbm_bo (cursor_sprite, bo);
+      ensure_cursor_priv (cursor_sprite);
+      set_current_cursor_sprite_gbm_bo (cursor_sprite, bo);
     }
 }
 #endif
@@ -365,8 +482,11 @@ static void
 on_monitors_changed (MetaMonitorManager       *monitors,
                      MetaCursorRendererNative *native)
 {
+  MetaCursorRendererNativePrivate *priv =
+    meta_cursor_renderer_native_get_instance_private (native);
+
   /* Our tracking is all messed up, so force an update. */
-  update_hw_cursor (native, TRUE);
+  update_hw_cursor (native, TRUE, &priv->last_rect);
 }
 
 static void
@@ -414,5 +534,8 @@ meta_cursor_renderer_native_get_gbm_device (MetaCursorRendererNative *native)
 void
 meta_cursor_renderer_native_force_update (MetaCursorRendererNative *native)
 {
-  update_hw_cursor (native, TRUE);
+  MetaCursorRendererNativePrivate *priv =
+    meta_cursor_renderer_native_get_instance_private (native);
+
+  update_hw_cursor (native, TRUE, &priv->last_rect);
 }

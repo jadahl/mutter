@@ -43,6 +43,15 @@ struct _MetaCursorSprite
 struct _MetaCursorSpriteClass
 {
   GObjectClass parent_class;
+
+  void (* update_position) (MetaCursorSprite *self,
+                            int               x,
+                            int               y);
+
+  void (* get_current_rect) (MetaCursorSprite *self,
+                             MetaRectangle    *rect);
+
+  guint (* get_current_scale) (MetaCursorSprite *self);
 };
 
 typedef struct
@@ -56,5 +65,11 @@ GType meta_cursor_sprite_get_type (void) G_GNUC_CONST;
 MetaCursorSprite * meta_cursor_sprite_new (void);
 
 MetaCursorImage * meta_cursor_sprite_get_image (MetaCursorSprite *self);
+
+void meta_cursor_sprite_ensure_cogl_texture (MetaCursorSprite *self,
+                                             int scale);
+
+void meta_cursor_sprite_load_from_theme (MetaCursorSprite *self,
+                                         int               scale);
 
 #endif /* META_CURSOR_PRIVATE_H */

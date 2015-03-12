@@ -946,6 +946,8 @@ wl_surface_destructor (struct wl_resource *resource)
   MetaWaylandSurface *surface = wl_resource_get_user_data (resource);
   MetaWaylandCompositor *compositor = surface->compositor;
 
+  wl_signal_emit (&surface->destroy_signal, surface);
+
   /* If we still have a window at the time of destruction, that means that
    * the client is disconnecting, as the resources are destroyed in a random
    * order. Simply destroy the window in this case. */
@@ -998,6 +1000,8 @@ meta_wayland_surface_create (MetaWaylandCompositor *compositor,
 
   surface->resource = wl_resource_create (client, &wl_surface_interface, wl_resource_get_version (compositor_resource), id);
   wl_resource_set_implementation (surface->resource, &meta_wayland_wl_surface_interface, surface, wl_surface_destructor);
+
+  wl_signal_init (&surface->destroy_signal);
 
   surface->buffer_destroy_listener.notify = surface_handle_buffer_destroy;
   surface->surface_actor = g_object_ref_sink (meta_surface_actor_wayland_new (surface));

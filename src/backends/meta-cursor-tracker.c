@@ -284,7 +284,7 @@ meta_cursor_tracker_get_sprite (MetaCursorTracker *tracker)
     }
 
   if (cursor)
-    return meta_cursor_sprite_get_cogl_texture (cursor, NULL, NULL);
+    return meta_cursor_sprite_get_cogl_texture (cursor);
   else
     return NULL;
 }
@@ -316,7 +316,7 @@ meta_cursor_tracker_get_hot (MetaCursorTracker *tracker,
     }
 
   if (cursor)
-    meta_cursor_sprite_get_cogl_texture (cursor, x, y);
+    meta_cursor_sprite_get_hotspot (cursor, x, y);
   else
     {
       if (x)

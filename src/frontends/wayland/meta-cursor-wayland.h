@@ -26,6 +26,8 @@
 
 #include "frontends/meta-cursor-private.h"
 
+#include "wayland/meta-wayland-surface.h"
+
 #define META_TYPE_CURSOR_SPRITE_WAYLAND            (meta_cursor_sprite_wayland_get_type ())
 #define META_CURSOR_SPRITE_WAYLAND(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), META_TYPE_CURSOR_SPRITE_WAYLAND, MetaCursorSpriteWayland))
 #define META_CURSOR_SPRITE_WAYLAND_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass),  META_TYPE_CURSOR_SPRITE_WAYLAND, MetaCursorSpriteWaylandClass))
@@ -48,8 +50,8 @@ struct _MetaCursorSpriteWaylandClass
 
 GType meta_cursor_sprite_wayland_get_type (void) G_GNUC_CONST;
 
-MetaCursorSprite * meta_cursor_sprite_wayland_from_buffer (struct wl_resource *buffer,
-                                                           int                 hot_x,
-                                                           int                 hot_y);
+MetaCursorSprite * meta_cursor_sprite_wayland_from_surface (MetaWaylandSurface *surface,
+                                                            int                 hot_x,
+                                                            int                 hot_y);
 
 #endif /* META_CURSOR_WAYLAND_H */

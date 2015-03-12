@@ -25,6 +25,7 @@
 typedef struct _MetaCursorSprite MetaCursorSprite;
 
 #include <meta/common.h>
+#include <meta/boxes.h>
 
 MetaCursorSprite * meta_cursor_sprite_from_theme  (MetaCursor          cursor);
 
@@ -37,16 +38,19 @@ MetaCursor meta_cursor_sprite_get_meta_cursor (MetaCursorSprite *cursor);
 Cursor meta_cursor_create_x_cursor (Display    *xdisplay,
                                     MetaCursor  cursor);
 
-CoglTexture *meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *cursor,
-                                                  int              *hot_x,
-                                                  int              *hot_y);
+void meta_cursor_sprite_update_position (MetaCursorSprite *cursor,
+                                         int               x,
+                                         int               y);
+
+CoglTexture *meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *cursor);
 
 void meta_cursor_sprite_get_hotspot (MetaCursorSprite *self,
                                      int              *hot_x,
                                      int              *hot_y);
 
-guint meta_cursor_sprite_get_width (MetaCursorSprite *self);
+void meta_cursor_sprite_get_current_rect (MetaCursorSprite *self,
+                                          MetaRectangle    *rect);
 
-guint meta_cursor_sprite_get_height (MetaCursorSprite *self);
+guint meta_cursor_sprite_get_current_scale (MetaCursorSprite *self);
 
 #endif /* META_CURSOR_H */

@@ -327,6 +327,18 @@ meta_rectangle_contains_rect  (const MetaRectangle *outer_rect,
     inner_rect->y + inner_rect->height <= outer_rect->y + outer_rect->height;
 }
 
+gboolean
+meta_rectangle_contains_point  (const MetaRectangle *rect,
+                                int                  x,
+                                int                  y)
+{
+  return
+    x >= rect->x &&
+    x < rect->x + rect->width &&
+    y >= rect->y &&
+    y < rect->y + rect->height;
+}
+
 void
 meta_rectangle_resize_with_gravity (const MetaRectangle *old_rect,
                                     MetaRectangle       *rect,

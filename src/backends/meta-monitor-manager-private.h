@@ -158,7 +158,8 @@ struct _MetaCRTC
   /* Used when changing configuration */
   gboolean is_dirty;
 
-  MetaCursorSprite *cursor;
+  /* Used by cursor renderer backend */
+  void *cursor_renderer_private;
 };
 
 struct _MetaMonitorMode

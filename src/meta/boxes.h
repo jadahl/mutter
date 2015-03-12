@@ -126,5 +126,8 @@ gboolean meta_rectangle_could_fit_rect  (const MetaRectangle *outer_rect,
                                          const MetaRectangle *inner_rect);
 gboolean meta_rectangle_contains_rect   (const MetaRectangle *outer_rect,
                                          const MetaRectangle *inner_rect);
+gboolean meta_rectangle_contains_point  (const MetaRectangle *rect,
+                                         int                  x,
+                                         int                  y);
 
 #endif /* META_BOXES_H */

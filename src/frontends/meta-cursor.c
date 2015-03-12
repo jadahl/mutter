@@ -28,7 +28,9 @@
 #include "display-private.h"
 #include "screen-private.h"
 #include "meta-backend-private.h"
+#ifdef HAVE_WAYLAND
 #include "frontends/wayland/meta-cursor-wayland.h"
+#endif
 
 #include <string.h>
 
@@ -38,6 +40,9 @@
 
 struct _MetaCursorSpritePrivate
 {
+  int current_x;
+  int current_y;
+
   MetaCursor cursor;
   MetaCursorImage image;
 };
@@ -107,11 +112,11 @@ meta_cursor_create_x_cursor (Display    *xdisplay,
 }
 
 static XcursorImage *
-load_cursor_on_client (MetaCursor cursor)
+load_cursor_on_client (MetaCursor cursor, int scale)
 {
   return XcursorLibraryLoadImage (translate_meta_cursor (cursor),
                                   meta_prefs_get_cursor_theme (),
-                                  meta_prefs_get_cursor_size ());
+                                  meta_prefs_get_cursor_size () * scale);
 }
 
 static void
@@ -156,10 +161,45 @@ meta_cursor_image_load_from_xcursor_image (MetaCursorSprite *self,
 MetaCursorSprite *
 meta_cursor_sprite_new (void)
 {
+#ifdef HAVE_WAYLAND
   if (meta_is_wayland_compositor ())
     return g_object_new (META_TYPE_CURSOR_SPRITE_WAYLAND, NULL);
   else
+#endif
     return g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
+}
+
+void
+meta_cursor_sprite_load_from_theme (MetaCursorSprite *self,
+                                    int scale)
+{
+  MetaCursorSpritePrivate *priv =
+    meta_cursor_sprite_get_instance_private (self);
+  XcursorImage *image;
+
+  if (priv->image.texture)
+    {
+      cogl_object_unref (priv->image.texture);
+      priv->image.texture = NULL;
+    }
+
+  image = load_cursor_on_client (priv->cursor, scale);
+  if (!image)
+    return;
+
+  meta_cursor_image_load_from_xcursor_image (self, image);
+  XcursorImageDestroy (image);
+}
+
+void
+meta_cursor_sprite_ensure_cogl_texture (MetaCursorSprite *self, int scale)
+{
+  MetaCursorSpritePrivate *priv = meta_cursor_sprite_get_instance_private (self);
+
+  if (priv->image.texture)
+    return;
+
+  meta_cursor_sprite_load_from_theme (self, scale);
 }
 
 MetaCursorSprite *
@@ -167,20 +207,11 @@ meta_cursor_sprite_from_theme (MetaCursor cursor)
 {
   MetaCursorSprite *self;
   MetaCursorSpritePrivate *priv;
-  XcursorImage *image;
 
   self = meta_cursor_sprite_new ();
   priv = meta_cursor_sprite_get_instance_private (self);
 
   priv->cursor = cursor;
-
-  /* TODO: Only load this on-demand when running as X11 CM. */
-  image = load_cursor_on_client (priv->cursor);
-  if (!image)
-    return self;
-
-  meta_cursor_image_load_from_xcursor_image (self, image);
-  XcursorImageDestroy (image);
 
   return self;
 }
@@ -192,8 +223,6 @@ meta_cursor_sprite_from_texture (CoglTexture2D *texture,
 {
   MetaCursorSprite *self;
   MetaCursorSpritePrivate *priv;
-
-  g_assert (!meta_is_wayland_compositor ());
 
   self = meta_cursor_sprite_new ();
   priv = meta_cursor_sprite_get_instance_private (self);
@@ -208,18 +237,12 @@ meta_cursor_sprite_from_texture (CoglTexture2D *texture,
 }
 
 CoglTexture *
-meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *self,
-                                     int              *hot_x,
-                                     int              *hot_y)
+meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *self)
 {
   MetaCursorSpritePrivate *priv = meta_cursor_sprite_get_instance_private (self);
+  guint scale = meta_cursor_sprite_get_current_scale (self);
 
-  /* TODO: This should create the texture on-demand when running as X11 CM. */
-
-  if (hot_x)
-    *hot_x = priv->image.hot_x;
-  if (hot_y)
-    *hot_y = priv->image.hot_y;
+  meta_cursor_sprite_ensure_cogl_texture (self, scale);
 
   return COGL_TEXTURE (priv->image.texture);
 }
@@ -245,24 +268,6 @@ meta_cursor_sprite_get_hotspot (MetaCursorSprite *self,
   *hot_y = priv->image.hot_y;
 }
 
-guint
-meta_cursor_sprite_get_width (MetaCursorSprite *self)
-{
-  MetaCursorSpritePrivate *priv =
-    meta_cursor_sprite_get_instance_private (self);
-
-  return cogl_texture_get_width (COGL_TEXTURE (priv->image.texture));
-}
-
-guint
-meta_cursor_sprite_get_height (MetaCursorSprite *self)
-{
-  MetaCursorSpritePrivate *priv =
-    meta_cursor_sprite_get_instance_private (self);
-
-  return cogl_texture_get_height (COGL_TEXTURE (priv->image.texture));
-}
-
 MetaCursorImage *
 meta_cursor_sprite_get_image (MetaCursorSprite *self)
 {
@@ -270,6 +275,58 @@ meta_cursor_sprite_get_image (MetaCursorSprite *self)
     meta_cursor_sprite_get_instance_private (self);
 
   return &priv->image;
+}
+
+void
+meta_cursor_sprite_update_position (MetaCursorSprite *self,
+                                    int               x,
+                                    int               y)
+{
+  if (META_CURSOR_SPRITE_GET_CLASS (self)->update_position)
+    META_CURSOR_SPRITE_GET_CLASS (self)->update_position (self, x, y);
+  else
+    {
+      MetaCursorSpritePrivate *priv =
+        meta_cursor_sprite_get_instance_private (self);
+
+      priv->current_x = x;
+      priv->current_y = y;
+    }
+}
+
+void
+meta_cursor_sprite_get_current_rect (MetaCursorSprite *self,
+                                     MetaRectangle    *rect)
+{
+  if (META_CURSOR_SPRITE_GET_CLASS (self)->get_current_rect)
+    META_CURSOR_SPRITE_GET_CLASS (self)->get_current_rect (self, rect);
+  else
+    {
+      MetaCursorSpritePrivate *priv =
+        meta_cursor_sprite_get_instance_private (self);
+      gint hot_x, hot_y;
+      guint width, height;
+
+      meta_cursor_sprite_ensure_cogl_texture (self, 1);
+
+      meta_cursor_sprite_get_hotspot (self, &hot_x, &hot_y);
+      width = cogl_texture_get_width (priv->image.texture);
+      height = cogl_texture_get_height (priv->image.texture);
+
+      rect->x = priv->current_x - hot_x;
+      rect->y = priv->current_y - hot_y;
+      rect->width = width;
+      rect->height = height;
+    }
+}
+
+guint
+meta_cursor_sprite_get_current_scale (MetaCursorSprite *self)
+{
+  if (META_CURSOR_SPRITE_GET_CLASS (self)->get_current_scale)
+    return META_CURSOR_SPRITE_GET_CLASS (self)->get_current_scale (self);
+  else
+    return 1;
 }
 
 static void

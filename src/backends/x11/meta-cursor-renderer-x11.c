@@ -40,7 +40,8 @@ typedef struct _MetaCursorRendererX11Private MetaCursorRendererX11Private;
 G_DEFINE_TYPE_WITH_PRIVATE (MetaCursorRendererX11, meta_cursor_renderer_x11, META_TYPE_CURSOR_RENDERER);
 
 static gboolean
-meta_cursor_renderer_x11_update_cursor (MetaCursorRenderer *renderer)
+meta_cursor_renderer_x11_update_cursor (MetaCursorRenderer *renderer,
+                                        MetaCursorSprite *cursor_sprite)
 {
   MetaCursorRendererX11 *x11 = META_CURSOR_RENDERER_X11 (renderer);
   MetaCursorRendererX11Private *priv = meta_cursor_renderer_x11_get_instance_private (x11);
@@ -53,13 +54,14 @@ meta_cursor_renderer_x11_update_cursor (MetaCursorRenderer *renderer)
 
   Display *xdisplay = meta_backend_x11_get_xdisplay (backend);
 
-  MetaCursorSprite *cursor_sprite = meta_cursor_renderer_get_cursor (renderer);
   gboolean has_server_cursor = FALSE;
 
   if (cursor_sprite)
     {
       MetaCursor cursor = meta_cursor_sprite_get_meta_cursor (cursor_sprite);
-      if (cursor != META_CURSOR_NONE)
+
+      if (cursor != META_CURSOR_NONE &&
+          meta_cursor_sprite_get_current_scale (cursor_sprite) == 1)
         {
           Cursor xcursor = meta_cursor_create_x_cursor (xdisplay, cursor);
           XDefineCursor (xdisplay, xwindow, xcursor);

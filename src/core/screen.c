@@ -1457,6 +1457,26 @@ meta_screen_get_monitor_index_for_rect (MetaScreen    *screen,
   return monitor->number;
 }
 
+const MetaMonitorInfo *
+meta_screen_get_monitor_for_point (MetaScreen *screen,
+                                   int         x,
+                                   int         y)
+{
+  int i;
+
+  if (screen->n_monitor_infos == 1)
+    return &screen->monitor_infos[0];
+
+  for (i = 0; i < screen->n_monitor_infos; i++)
+    {
+      if (meta_rectangle_contains_point (&screen->monitor_infos[i].rect,
+                                         x, y))
+        return &screen->monitor_infos[i];
+    }
+
+  return NULL;
+}
+
 const MetaMonitorInfo*
 meta_screen_get_monitor_neighbor (MetaScreen         *screen,
                                   int                 which_monitor,

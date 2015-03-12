@@ -26,10 +26,23 @@
 #include <cogl/cogl-wayland-server.h>
 
 #include <meta/meta-backend.h>
+#include "core/screen-private.h"
 #include "backends/meta-backend-private.h"
 #include "backends/meta-cursor-renderer.h"
+#include "wayland/meta-wayland-surface.h"
+#include "wayland/meta-wayland-buffer.h"
 
-G_DEFINE_TYPE (MetaCursorSpriteWayland, meta_cursor_sprite_wayland, G_TYPE_OBJECT)
+typedef struct
+{
+  MetaRectangle current_rect;
+  int monitor_scale;
+  MetaWaylandSurface *surface;
+  struct wl_listener surface_destroy_listener;
+} MetaCursorSpriteWaylandPrivate;
+
+G_DEFINE_TYPE_WITH_PRIVATE (MetaCursorSpriteWayland,
+                            meta_cursor_sprite_wayland,
+                            META_TYPE_CURSOR_SPRITE)
 
 static void
 load_from_buffer (MetaCursorSpriteWayland *self,
@@ -58,26 +71,144 @@ load_from_buffer (MetaCursorSpriteWayland *self,
                                                       cursor_sprite, buffer);
 }
 
+static void
+on_surface_destroyed (struct wl_listener *listener, void *data)
+{
+  MetaCursorSpriteWaylandPrivate *priv =
+    wl_container_of (listener, priv, surface_destroy_listener);
+
+  priv->surface = NULL;
+  wl_list_init (&priv->surface_destroy_listener.link);
+}
+
 MetaCursorSprite *
-meta_cursor_sprite_wayland_from_buffer (struct wl_resource *buffer,
-                                        int                 hot_x,
-                                        int                 hot_y)
+meta_cursor_sprite_wayland_from_surface (MetaWaylandSurface *surface,
+                                         int                 hot_x,
+                                         int                 hot_y)
 {
   MetaCursorSpriteWayland *self;
+  MetaCursorSpriteWaylandPrivate *priv;
 
   self = META_CURSOR_SPRITE_WAYLAND (meta_cursor_sprite_new ());
+  priv = meta_cursor_sprite_wayland_get_instance_private (self);
 
-  load_from_buffer (self, buffer, hot_x, hot_y);
+  priv->surface = surface;
+  priv->surface_destroy_listener.notify = on_surface_destroyed;
+  wl_signal_add (&surface->destroy_signal, &priv->surface_destroy_listener);
+
+  load_from_buffer (self, surface->buffer->resource, hot_x, hot_y);
 
   return META_CURSOR_SPRITE (self);
 }
 
 static void
+meta_cursor_sprite_wayland_update_position (MetaCursorSprite *cursor_sprite,
+                                            int               x,
+                                            int               y)
+{
+  MetaCursorSpriteWayland *self = META_CURSOR_SPRITE_WAYLAND (cursor_sprite);
+  MetaCursorSpriteWaylandPrivate *priv =
+    meta_cursor_sprite_wayland_get_instance_private (self);
+  MetaDisplay *display = meta_get_display ();
+  MetaScreen *screen = display->screen;
+  const MetaMonitorInfo *monitor;
+  float image_scale;
+  MetaCursorImage *image;
+  guint image_width, image_height;
+
+  /* During startup, we cannot retrieve the screen here since it has not been
+   * set to MetaDisplay yet. Don't try to draw the cursor until we have started.
+   */
+  if (!screen)
+    return;
+
+  /* If surface was destroyed while it was a cursor there is not much
+   * we can do any more. */
+  if (!priv->surface &&
+      meta_cursor_sprite_get_meta_cursor (cursor_sprite) == META_CURSOR_NONE)
+    {
+      priv->current_rect = (MetaRectangle) { 0 };
+      return;
+    }
+
+  monitor = meta_screen_get_monitor_for_point (screen, x, y);
+  if (priv->surface)
+    {
+      image_scale = (float)monitor->scale / priv->surface->scale;
+    }
+  else
+    {
+      /* We always load the correct size, so we never scale in this case. */
+      image_scale = 1;
+      if (priv->monitor_scale != monitor->scale)
+        meta_cursor_sprite_load_from_theme (cursor_sprite, monitor->scale);
+    }
+  priv->monitor_scale = monitor->scale;
+
+  meta_cursor_sprite_ensure_cogl_texture (cursor_sprite, priv->monitor_scale);
+  image = meta_cursor_sprite_get_image (cursor_sprite);
+  image_width = cogl_texture_get_width (image->texture);
+  image_height = cogl_texture_get_height (image->texture);
+
+  priv->current_rect = (MetaRectangle) {
+    .x = (int)(x - (image->hot_x * image_scale)),
+    .y = (int)(y - (image->hot_y * image_scale)),
+    .width = (int)(image_width * image_scale),
+    .height = (int)(image_height * image_scale),
+  };
+}
+
+static void
+meta_cursor_sprite_wayland_get_current_rect (MetaCursorSprite *cursor_sprite,
+                                             MetaRectangle    *rect)
+{
+  MetaCursorSpriteWayland *self = META_CURSOR_SPRITE_WAYLAND (cursor_sprite);
+  MetaCursorSpriteWaylandPrivate *priv =
+    meta_cursor_sprite_wayland_get_instance_private (self);
+
+  *rect = priv->current_rect;
+}
+
+static guint
+meta_cursor_sprite_wayland_get_current_scale (MetaCursorSprite *cursor_sprite)
+{
+  MetaCursorSpriteWayland *self = META_CURSOR_SPRITE_WAYLAND (cursor_sprite);
+  MetaCursorSpriteWaylandPrivate *priv =
+    meta_cursor_sprite_wayland_get_instance_private (self);
+
+  return priv->monitor_scale;
+}
+
+static void
 meta_cursor_sprite_wayland_init (MetaCursorSpriteWayland *self)
 {
+  MetaCursorSpriteWaylandPrivate *priv =
+    meta_cursor_sprite_wayland_get_instance_private (self);
+
+  wl_list_init (&priv->surface_destroy_listener.link);
+}
+
+static void
+meta_cursor_sprite_wayland_finalize (GObject *gobject)
+{
+  MetaCursorSpriteWayland *self = META_CURSOR_SPRITE_WAYLAND (gobject);
+  MetaCursorSpriteWaylandPrivate *priv =
+    meta_cursor_sprite_wayland_get_instance_private (self);
+
+  wl_list_remove (&priv->surface_destroy_listener.link);
+
+  G_OBJECT_CLASS (meta_cursor_sprite_wayland_parent_class)->finalize (gobject);
 }
 
 static void
 meta_cursor_sprite_wayland_class_init (MetaCursorSpriteWaylandClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+  MetaCursorSpriteClass *parent_class = META_CURSOR_SPRITE_CLASS (klass);
+
+  object_class->finalize = meta_cursor_sprite_wayland_finalize;
+
+  parent_class->update_position = meta_cursor_sprite_wayland_update_position;
+  parent_class->get_current_rect = meta_cursor_sprite_wayland_get_current_rect;
+  parent_class->get_current_scale = meta_cursor_sprite_wayland_get_current_scale;
 }
