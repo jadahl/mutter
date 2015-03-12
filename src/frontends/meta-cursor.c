@@ -31,6 +31,7 @@
 #ifdef HAVE_WAYLAND
 #include "frontends/wayland/meta-cursor-wayland.h"
 #endif
+#include "frontends/x11/meta-cursor-x11.h"
 
 #include <string.h>
 
@@ -40,9 +41,6 @@
 
 struct _MetaCursorSpritePrivate
 {
-  int current_x;
-  int current_y;
-
   MetaCursor cursor;
   MetaCursorImage image;
 };
@@ -166,7 +164,7 @@ meta_cursor_sprite_new (void)
     return g_object_new (META_TYPE_CURSOR_SPRITE_WAYLAND, NULL);
   else
 #endif
-    return g_object_new (META_TYPE_CURSOR_SPRITE, NULL);
+    return g_object_new (META_TYPE_CURSOR_SPRITE_X11, NULL);
 }
 
 void
@@ -282,51 +280,20 @@ meta_cursor_sprite_update_position (MetaCursorSprite *self,
                                     int               x,
                                     int               y)
 {
-  if (META_CURSOR_SPRITE_GET_CLASS (self)->update_position)
-    META_CURSOR_SPRITE_GET_CLASS (self)->update_position (self, x, y);
-  else
-    {
-      MetaCursorSpritePrivate *priv =
-        meta_cursor_sprite_get_instance_private (self);
-
-      priv->current_x = x;
-      priv->current_y = y;
-    }
+  META_CURSOR_SPRITE_GET_CLASS (self)->update_position (self, x, y);
 }
 
 void
 meta_cursor_sprite_get_current_rect (MetaCursorSprite *self,
                                      MetaRectangle    *rect)
 {
-  if (META_CURSOR_SPRITE_GET_CLASS (self)->get_current_rect)
-    META_CURSOR_SPRITE_GET_CLASS (self)->get_current_rect (self, rect);
-  else
-    {
-      MetaCursorSpritePrivate *priv =
-        meta_cursor_sprite_get_instance_private (self);
-      gint hot_x, hot_y;
-      guint width, height;
-
-      meta_cursor_sprite_ensure_cogl_texture (self, 1);
-
-      meta_cursor_sprite_get_hotspot (self, &hot_x, &hot_y);
-      width = cogl_texture_get_width (priv->image.texture);
-      height = cogl_texture_get_height (priv->image.texture);
-
-      rect->x = priv->current_x - hot_x;
-      rect->y = priv->current_y - hot_y;
-      rect->width = width;
-      rect->height = height;
-    }
+  META_CURSOR_SPRITE_GET_CLASS (self)->get_current_rect (self, rect);
 }
 
 guint
 meta_cursor_sprite_get_current_scale (MetaCursorSprite *self)
 {
-  if (META_CURSOR_SPRITE_GET_CLASS (self)->get_current_scale)
-    return META_CURSOR_SPRITE_GET_CLASS (self)->get_current_scale (self);
-  else
-    return 1;
+  return META_CURSOR_SPRITE_GET_CLASS (self)->get_current_scale (self);
 }
 
 static void

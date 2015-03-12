@@ -100,6 +100,8 @@ libmutter_la_SOURCES =				\
 	frontends/meta-cursor.c			\
 	frontends/meta-cursor.h			\
 	frontends/meta-cursor-private.h		\
+	frontends/x11/meta-cursor-x11.c		\
+	frontends/x11/meta-cursor-x11.h		\
 	core/meta-accel-parse.c			\
 	core/meta-accel-parse.h			\
 	meta/barrier.h				\
