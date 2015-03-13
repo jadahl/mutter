@@ -93,6 +93,13 @@ sync_focus_surface (MetaWaylandPointer *pointer)
 }
 
 static void
+cursor_surface_on_cursor_changed (MetaCursorTracker *tracker,
+                                  MetaWaylandSurface *surface)
+{
+  meta_wayland_surface_update_outputs (surface);
+}
+
+static void
 set_cursor_surface (MetaWaylandPointer *pointer,
                     MetaWaylandSurface *surface)
 {
@@ -100,13 +107,24 @@ set_cursor_surface (MetaWaylandPointer *pointer,
     return;
 
   if (pointer->cursor_surface)
-    wl_list_remove (&pointer->cursor_surface_destroy_listener.link);
+    {
+      g_signal_handlers_disconnect_by_func (
+        pointer->cursor_tracker,
+        (gpointer) cursor_surface_on_cursor_changed,
+        pointer->cursor_surface);
+      wl_list_remove (&pointer->cursor_surface_destroy_listener.link);
+    }
 
   pointer->cursor_surface = surface;
 
   if (pointer->cursor_surface)
-    wl_resource_add_destroy_listener (pointer->cursor_surface->resource,
-                                      &pointer->cursor_surface_destroy_listener);
+    {
+      g_signal_connect (pointer->cursor_tracker, "cursor-changed",
+                        G_CALLBACK (cursor_surface_on_cursor_changed),
+                        pointer->cursor_surface);
+      wl_resource_add_destroy_listener (pointer->cursor_surface->resource,
+                                        &pointer->cursor_surface_destroy_listener);
+    }
 }
 
 static void

@@ -101,6 +101,15 @@ meta_cursor_sprite_wayland_from_surface (MetaWaylandSurface *surface,
   return META_CURSOR_SPRITE (self);
 }
 
+MetaWaylandSurface *
+meta_cursor_sprite_wayland_get_surface (MetaCursorSpriteWayland *self)
+{
+  MetaCursorSpriteWaylandPrivate *priv =
+    meta_cursor_sprite_wayland_get_instance_private (self);
+
+  return priv->surface;
+}
+
 static void
 meta_cursor_sprite_wayland_update_position (MetaCursorSprite *cursor_sprite,
                                             int               x,
@@ -156,6 +165,9 @@ meta_cursor_sprite_wayland_update_position (MetaCursorSprite *cursor_sprite,
     .width = (int)(image_width * image_scale),
     .height = (int)(image_height * image_scale),
   };
+
+  if (priv->surface)
+    meta_wayland_surface_update_outputs (priv->surface);
 }
 
 static void

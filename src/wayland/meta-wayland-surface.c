@@ -43,6 +43,7 @@
 #include "meta-wayland-popup.h"
 #include "meta-wayland-data-device.h"
 #include "meta-wayland-outputs.h"
+#include "frontends/wayland/meta-cursor-wayland.h"
 
 #include "meta-cursor-tracker-private.h"
 #include "display-private.h"
@@ -66,9 +67,6 @@ typedef struct
   MetaWaylandSurface *sibling;
   struct wl_listener sibling_destroy_listener;
 } MetaWaylandSubsurfacePlacementOp;
-
-static void
-surface_update_outputs (MetaWaylandSurface *surface);
 
 int
 meta_wayland_surface_set_role (MetaWaylandSurface    *surface,
@@ -513,7 +511,7 @@ apply_pending_state (MetaWaylandSurface      *surface,
 
   if (pending->newly_attached &&
       CLUTTER_ACTOR_IS_MAPPED (surface->surface_actor))
-    surface_update_outputs (surface);
+    meta_wayland_surface_update_outputs (surface);
 
   pending_state_reset (pending);
 
@@ -842,6 +840,34 @@ typedef struct
   cairo_rectangle_int_t buffer_rect;
 } UpdateOutputStateData;
 
+static gboolean
+is_cursor_surface_on_crtc (MetaWaylandSurface *surface, MetaCRTC *crtc)
+{
+  MetaWaylandPointer *pointer = &surface->compositor->seat->pointer;
+  MetaCursorTracker *tracker = pointer->cursor_tracker;
+  MetaCursorSprite *cursor_sprite;
+  MetaCursorSpriteWayland *cursor_sprite_wayland;
+  MetaWaylandSurface *displayed_surface;
+  MetaRectangle rect;
+
+  if (surface != pointer->cursor_surface)
+    return FALSE;
+
+  cursor_sprite = meta_cursor_tracker_get_displayed_cursor (tracker);
+  if (!cursor_sprite)
+    return FALSE;
+
+  cursor_sprite_wayland = META_CURSOR_SPRITE_WAYLAND (cursor_sprite);
+  displayed_surface =
+    meta_cursor_sprite_wayland_get_surface (cursor_sprite_wayland);
+
+  if (surface != displayed_surface)
+    return FALSE;
+
+  meta_cursor_sprite_get_current_rect (cursor_sprite, &rect);
+  return meta_rectangle_overlap (&rect, &crtc->rect);
+}
+
 static void
 update_surface_output_state (gpointer key, gpointer value, gpointer user_data)
 {
@@ -850,7 +876,7 @@ update_surface_output_state (gpointer key, gpointer value, gpointer user_data)
   MetaSurfaceActorWayland *actor =
     META_SURFACE_ACTOR_WAYLAND (surface->surface_actor);
   MetaCRTC *crtc;
-  gboolean is_on_output;
+  gboolean is_on_output = FALSE;
 
   crtc = wayland_output->output->crtc;
   if (!crtc)
@@ -859,15 +885,31 @@ update_surface_output_state (gpointer key, gpointer value, gpointer user_data)
       return;
     }
 
-  is_on_output = meta_surface_actor_wayland_is_on_crtc (actor, crtc);
+  switch (surface->role)
+    {
+    case META_WAYLAND_SURFACE_ROLE_NONE:
+      break;
+    case META_WAYLAND_SURFACE_ROLE_CURSOR:
+      is_on_output = is_cursor_surface_on_crtc (surface, crtc);
+      break;
+    case META_WAYLAND_SURFACE_ROLE_DND:
+      break;
+    case META_WAYLAND_SURFACE_ROLE_XDG_SURFACE:
+    case META_WAYLAND_SURFACE_ROLE_XDG_POPUP:
+    case META_WAYLAND_SURFACE_ROLE_WL_SHELL_SURFACE:
+    case META_WAYLAND_SURFACE_ROLE_SUBSURFACE:
+      is_on_output = meta_surface_actor_wayland_is_on_crtc (actor, crtc);
+      break;
+    }
+
   set_surface_is_on_output (surface, wayland_output, is_on_output);
 }
 
 static void
 subsurface_update_outputs (gpointer data, gpointer user_data);
 
-static void
-surface_update_outputs (MetaWaylandSurface *surface)
+void
+meta_wayland_surface_update_outputs (MetaWaylandSurface *surface)
 {
   g_hash_table_foreach (surface->compositor->outputs,
                         update_surface_output_state,
@@ -881,7 +923,7 @@ subsurface_update_outputs (gpointer data, gpointer user_data)
 {
   MetaWaylandSurface *surface = data;
 
-  surface_update_outputs (surface);
+  meta_wayland_surface_update_outputs (surface);
 }
 
 static void
@@ -889,7 +931,7 @@ window_actor_position_changed (MetaWindowActor *actor,
                                GParamSpec *pspec,
                                MetaWaylandSurface *surface)
 {
-  surface_update_outputs (surface);
+  meta_wayland_surface_update_outputs (surface);
 }
 
 void

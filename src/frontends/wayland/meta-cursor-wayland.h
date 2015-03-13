@@ -54,4 +54,6 @@ MetaCursorSprite * meta_cursor_sprite_wayland_from_surface (MetaWaylandSurface *
                                                             int                 hot_x,
                                                             int                 hot_y);
 
+MetaWaylandSurface * meta_cursor_sprite_wayland_get_surface (MetaCursorSpriteWayland *self);
+
 #endif /* META_CURSOR_WAYLAND_H */
