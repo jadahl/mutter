@@ -46,4 +46,9 @@ struct _MetaCursorSpriteX11Class
 
 GType meta_cursor_sprite_x11_get_type (void) G_GNUC_CONST;
 
+MetaCursorSprite * meta_cursor_sprite_x11_from_texture (CoglTexture2D *texture,
+                                                        int            hot_x,
+                                                        int            hot_y);
+
+
 #endif /* META_CURSOR_X11_H */

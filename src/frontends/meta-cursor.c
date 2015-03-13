@@ -214,26 +214,6 @@ meta_cursor_sprite_from_theme (MetaCursor cursor)
   return self;
 }
 
-MetaCursorSprite *
-meta_cursor_sprite_from_texture (CoglTexture2D *texture,
-                                 int            hot_x,
-                                 int            hot_y)
-{
-  MetaCursorSprite *self;
-  MetaCursorSpritePrivate *priv;
-
-  self = meta_cursor_sprite_new ();
-  priv = meta_cursor_sprite_get_instance_private (self);
-
-  cogl_object_ref (texture);
-
-  priv->image.texture = texture;
-  priv->image.hot_x = hot_x;
-  priv->image.hot_y = hot_y;
-
-  return self;
-}
-
 CoglTexture *
 meta_cursor_sprite_get_cogl_texture (MetaCursorSprite *self)
 {

@@ -33,6 +33,26 @@ G_DEFINE_TYPE_WITH_PRIVATE (MetaCursorSpriteX11,
                             meta_cursor_sprite_x11,
                             META_TYPE_CURSOR_SPRITE)
 
+MetaCursorSprite *
+meta_cursor_sprite_x11_from_texture (CoglTexture2D *texture,
+                                     int            hot_x,
+                                     int            hot_y)
+{
+  MetaCursorSprite *cursor_sprite;
+  MetaCursorImage *image;
+
+  cursor_sprite = meta_cursor_sprite_new ();
+  image = meta_cursor_sprite_get_image (cursor_sprite);
+
+  cogl_object_ref (texture);
+
+  image->texture = texture;
+  image->hot_x = hot_x;
+  image->hot_y = hot_y;
+
+  return cursor_sprite;
+}
+
 static void
 meta_cursor_sprite_x11_update_position (MetaCursorSprite *cursor_sprite,
                                         int               x,

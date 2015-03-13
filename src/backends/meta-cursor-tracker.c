@@ -43,6 +43,7 @@
 #include <X11/extensions/Xfixes.h>
 
 #include "meta-backend-private.h"
+#include "frontends/x11/meta-cursor-x11.h"
 
 G_DEFINE_TYPE (MetaCursorTracker, meta_cursor_tracker, G_TYPE_OBJECT);
 
@@ -252,9 +253,9 @@ ensure_xfixes_cursor (MetaCursorTracker *tracker)
   if (sprite != NULL)
     {
       MetaCursorSprite *cursor =
-        meta_cursor_sprite_from_texture (sprite,
-                                         cursor_image->xhot,
-                                         cursor_image->yhot);
+        meta_cursor_sprite_x11_from_texture (sprite,
+                                             cursor_image->xhot,
+                                             cursor_image->yhot);
       cogl_object_unref (sprite);
       tracker->xfixes_cursor = cursor;
     }

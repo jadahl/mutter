@@ -29,10 +29,6 @@ typedef struct _MetaCursorSprite MetaCursorSprite;
 
 MetaCursorSprite * meta_cursor_sprite_from_theme  (MetaCursor          cursor);
 
-MetaCursorSprite * meta_cursor_sprite_from_texture (CoglTexture2D *texture,
-                                                    int            hot_x,
-                                                    int            hot_y);
-
 MetaCursor meta_cursor_sprite_get_meta_cursor (MetaCursorSprite *cursor);
 
 Cursor meta_cursor_create_x_cursor (Display    *xdisplay,
