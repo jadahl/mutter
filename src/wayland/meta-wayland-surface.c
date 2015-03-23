@@ -2196,3 +2196,17 @@ meta_wayland_surface_popup_done (MetaWaylandSurface *surface)
   else if (surface->wl_shell_surface)
     wl_shell_surface_send_popup_done (surface->wl_shell_surface);
 }
+
+MetaWindow *
+meta_wayland_surface_get_toplevel_window (MetaWaylandSurface *surface)
+{
+  while (surface)
+    {
+      if (surface->window)
+        return surface->window;
+
+      surface = surface->sub.parent;
+    }
+
+  return NULL;
+}

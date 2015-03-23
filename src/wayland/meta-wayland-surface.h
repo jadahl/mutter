@@ -163,4 +163,6 @@ void                meta_wayland_surface_delete (MetaWaylandSurface *surface);
 
 void                meta_wayland_surface_popup_done (MetaWaylandSurface *surface);
 
+MetaWindow *        meta_wayland_surface_get_toplevel_window (MetaWaylandSurface *surface);
+
 #endif
