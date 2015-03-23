@@ -482,6 +482,7 @@ struct _MetaWindowClass
   gboolean (*update_icon)        (MetaWindow       *window,
                                   cairo_surface_t **icon,
                                   cairo_surface_t **mini_icon);
+  void (*update_main_monitor)    (MetaWindow *window);
   void (*main_monitor_changed)   (MetaWindow *window,
                                   const MetaMonitorInfo *old);
 };

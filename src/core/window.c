@@ -3565,7 +3565,7 @@ meta_window_update_monitor (MetaWindow *window,
   const MetaMonitorInfo *old;
 
   old = window->monitor;
-  window->monitor = meta_screen_get_monitor_for_window (window->screen, window);
+  META_WINDOW_GET_CLASS (window)->update_main_monitor (window);
   if (old != window->monitor)
     {
       meta_window_on_all_workspaces_changed (window);
