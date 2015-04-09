@@ -128,6 +128,8 @@ meta_monitor_manager_dummy_read_current (MetaMonitorManager *manager)
 
   for (i = 0; i < num_monitors; i++)
     {
+      int scale = monitor_scales[i];
+
       manager->crtcs[i].crtc_id = i + 1;
       manager->crtcs[i].rect.x = current_x;
       manager->crtcs[i].rect.y = 0;
@@ -138,6 +140,7 @@ meta_monitor_manager_dummy_read_current (MetaMonitorManager *manager)
       manager->crtcs[i].all_transforms = ALL_TRANSFORMS;
       manager->crtcs[i].is_dirty = FALSE;
       manager->crtcs[i].logical_monitor = NULL;
+      manager->crtcs[i].scale = scale;
 
       current_x += manager->crtcs[i].rect.width;
 
@@ -165,7 +168,7 @@ meta_monitor_manager_dummy_read_current (MetaMonitorManager *manager)
       manager->outputs[i].backlight_min = 0;
       manager->outputs[i].backlight_max = 0;
       manager->outputs[i].connector_type = META_CONNECTOR_TYPE_LVDS;
-      manager->outputs[i].scale = monitor_scales[i];
+      manager->outputs[i].scale = scale;
     }
 }
 

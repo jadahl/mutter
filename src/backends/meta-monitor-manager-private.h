@@ -160,6 +160,8 @@ struct _MetaCRTC
 
   /* Used by cursor renderer backend */
   void *cursor_renderer_private;
+
+  int scale;
 };
 
 struct _MetaMonitorMode
