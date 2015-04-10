@@ -124,6 +124,7 @@ meta_cursor_sprite_wayland_update_position (MetaCursorSprite *cursor_sprite,
   float image_scale;
   MetaCursorImage *image;
   guint image_width, image_height;
+  int monitor_scale;
 
   /* During startup, we cannot retrieve the screen here since it has not been
    * set to MetaDisplay yet. Don't try to draw the cursor until we have started.
@@ -141,6 +142,7 @@ meta_cursor_sprite_wayland_update_position (MetaCursorSprite *cursor_sprite,
     }
 
   monitor = meta_screen_get_monitor_for_point (screen, x, y);
+  monitor_scale = monitor ? monitor->scale : priv->monitor_scale;
   if (priv->surface)
     {
       image_scale = (float)monitor->scale / priv->surface->scale;
@@ -149,10 +151,10 @@ meta_cursor_sprite_wayland_update_position (MetaCursorSprite *cursor_sprite,
     {
       /* We always load the correct size, so we never scale in this case. */
       image_scale = 1;
-      if (priv->monitor_scale != monitor->scale)
-        meta_cursor_sprite_load_from_theme (cursor_sprite, monitor->scale);
+      if (priv->monitor_scale != monitor_scale)
+        meta_cursor_sprite_load_from_theme (cursor_sprite, monitor_scale);
     }
-  priv->monitor_scale = monitor->scale;
+  priv->monitor_scale = monitor_scale;
 
   meta_cursor_sprite_ensure_cogl_texture (cursor_sprite, priv->monitor_scale);
   image = meta_cursor_sprite_get_image (cursor_sprite);
@@ -197,6 +199,7 @@ meta_cursor_sprite_wayland_init (MetaCursorSpriteWayland *self)
   MetaCursorSpriteWaylandPrivate *priv =
     meta_cursor_sprite_wayland_get_instance_private (self);
 
+  priv->monitor_scale = 1;
   wl_list_init (&priv->surface_destroy_listener.link);
 }
 
