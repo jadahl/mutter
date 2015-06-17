@@ -251,7 +251,7 @@ pointer_handle_focus_surface_destroy (struct wl_listener *listener, void *data)
   meta_wayland_pointer_set_focus (pointer, NULL);
 }
 
-static void
+void
 meta_wayland_pointer_send_relative_motion (MetaWaylandPointer *pointer,
                                            const ClutterEvent *event)
 {
@@ -1161,6 +1161,13 @@ meta_wayland_relative_pointer_init (MetaWaylandCompositor *compositor)
                          &zwp_relative_pointer_manager_v1_interface, 1,
                          compositor, bind_relative_pointer_manager))
     g_error ("Could not create relative pointer manager global");
+}
+
+MetaWaylandSeat *
+meta_wayland_pointer_get_seat (MetaWaylandPointer *pointer)
+{
+  MetaWaylandSeat *seat = wl_container_of (pointer, seat, pointer);
+  return seat;
 }
 
 static void
