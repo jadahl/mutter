@@ -32,6 +32,24 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include "compositor/meta-surface-actor-wayland.h"
+
+#define META_TYPE_WAYLAND_SURFACE_ROLE_XWAYLAND (meta_wayland_surface_role_xwayland_get_type ())
+G_DECLARE_FINAL_TYPE (MetaWaylandSurfaceRoleXWayland,
+                      meta_wayland_surface_role_xwayland,
+                      META, WAYLAND_SURFACE_ROLE_XWAYLAND,
+                      MetaWaylandSurfaceRole);
+
+struct _MetaWaylandSurfaceRoleXWayland
+{
+  MetaWaylandSurfaceRole parent;
+};
+
+GType meta_wayland_surface_role_xwayland_get_type (void) G_GNUC_CONST;
+G_DEFINE_TYPE (MetaWaylandSurfaceRoleXWayland,
+               meta_wayland_surface_role_xwayland,
+               META_TYPE_WAYLAND_SURFACE_ROLE);
+
 static void
 associate_window_with_surface (MetaWindow         *window,
                                MetaWaylandSurface *surface)
@@ -46,7 +64,7 @@ associate_window_with_surface (MetaWindow         *window,
     window->surface->window = NULL;
 
   if (!meta_wayland_surface_assign_role (surface,
-                                         META_WAYLAND_SURFACE_ROLE_XWAYLAND))
+                                         META_TYPE_WAYLAND_SURFACE_ROLE_XWAYLAND))
     {
       wl_resource_post_error (surface->resource,
                               WL_DISPLAY_ERROR_INVALID_OBJECT,
@@ -552,4 +570,61 @@ meta_xwayland_stop (MetaXWaylandManager *manager)
       unlink (manager->lock_file);
       g_clear_pointer (&manager->lock_file, g_free);
     }
+}
+
+static void
+xwayland_surface_assigned (MetaWaylandSurfaceRole *surface_role)
+{
+  MetaWaylandSurface *surface =
+    meta_wayland_surface_role_get_surface (surface_role);
+
+  /* See comment in xwayland_surface_commit for why we reply even though the
+   * surface may not be drawn the next frame.
+   */
+  wl_list_insert_list (&surface->compositor->frame_callbacks,
+                       &surface->pending_frame_callback_list);
+  wl_list_init (&surface->pending_frame_callback_list);
+}
+
+static void
+xwayland_surface_commit (MetaWaylandSurfaceRole  *surface_role,
+                         MetaWaylandPendingState *pending)
+{
+  MetaWaylandSurface *surface =
+    meta_wayland_surface_role_get_surface (surface_role);
+
+  /* We cannot wait for the actor to be painted until we reply to the frame
+   * callback because this would cause Xwayland to stop posting more damage.
+   *
+   * When initializing, i.e. before the window has been mapped, the effect of
+   * complying with the frame callback specification is that XWayland will not
+   * post any damage until after we map the surface actor, and we would
+   * initially draw the inital content (usually black).
+   *
+   * After having being mapped, the effect is that frame callbacks are still
+   * replied to even though the surface was not drawn due to not being visible.
+   *
+   * TODO:
+   *  - Special case initial map of XWayland to let it fill the content before
+   *    we map it.
+   *  - Go through the surface actors frame callback list until some time after
+   *    it has been mapped so can avoid wasting buffers when the window is
+   *    hidden.
+   */
+  meta_wayland_surface_queue_pending_state_frame_callbacks (surface, pending);
+}
+
+static void
+meta_wayland_surface_role_xwayland_init (MetaWaylandSurfaceRoleXWayland *role)
+{
+}
+
+static void
+meta_wayland_surface_role_xwayland_class_init (MetaWaylandSurfaceRoleXWaylandClass *klass)
+{
+  MetaWaylandSurfaceRoleClass *surface_role_class =
+    META_WAYLAND_SURFACE_ROLE_CLASS (klass);
+
+  surface_role_class->assigned = xwayland_surface_assigned;
+  surface_role_class->commit = xwayland_surface_commit;
 }
