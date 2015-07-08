@@ -777,7 +777,7 @@ pointer_set_cursor (struct wl_client *client,
   if (surface)
     {
       if (meta_wayland_surface_set_role (surface,
-                                         META_WAYLAND_SURFACE_ROLE_CURSOR,
+                                         meta_wayland_surface_role_cursor_get_type (),
                                          resource,
                                          WL_POINTER_ERROR_ROLE) != 0)
         return;

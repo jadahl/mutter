@@ -32,6 +32,10 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include "compositor/meta-surface-actor-wayland.h"
+
+META_DECLARE_WAYLAND_SURFACE_ROLE (XWAYLAND, XWayland, xwayland);
+
 static void
 associate_window_with_surface (MetaWindow         *window,
                                MetaWaylandSurface *surface)
@@ -46,7 +50,7 @@ associate_window_with_surface (MetaWindow         *window,
     window->surface->window = NULL;
 
   if (meta_wayland_surface_set_role (surface,
-                                     META_WAYLAND_SURFACE_ROLE_XWAYLAND,
+                                     meta_wayland_surface_role_xwayland_get_type (),
                                      surface->resource,
                                      WL_DISPLAY_ERROR_INVALID_OBJECT))
     return;
@@ -549,3 +553,46 @@ meta_xwayland_stop (MetaXWaylandManager *manager)
       g_clear_pointer (&manager->lock_file, g_free);
     }
 }
+
+static void
+xwayland_surface_assigned (MetaWaylandSurface *surface)
+{
+  /* See comment in xwayland_surface_commit for why we reply even though the
+   * surface may not be drawn the next frame.
+   */
+  wl_list_insert_list (&surface->compositor->frame_callbacks,
+                       &surface->frame_callback_list);
+  wl_list_init (&surface->frame_callback_list);
+}
+
+static void
+xwayland_surface_commit (MetaWaylandSurface      *surface,
+                         MetaWaylandPendingState *pending)
+{
+  /* We cannot wait for the actor to be painted until we reply to the frame
+   * callback because this would cause Xwayland to stop posting more damage.
+   *
+   * When initializing, i.e. before the window has been mapped, the effect of
+   * complying with the frame callback specification is that XWayland will not
+   * post any damage until after we map the surface actor, and we would
+   * initially draw the inital content (usually black).
+   *
+   * After having being mapped, the effect is that frame callbacks are still
+   * replied to even though the surface was not drawn due to not being visible.
+   *
+   * TODO:
+   *  - Special case initial map of XWayland to let it fill the content before
+   *    we map it.
+   *  - Go through the surface actors frame callback list until some time after
+   *    it has been mapped so can avoid wasting buffers when the window is
+   *    hidden.
+   */
+  wl_list_insert_list (&surface->compositor->frame_callbacks,
+                       &pending->frame_callback_list);
+  wl_list_init (&pending->frame_callback_list);
+}
+
+META_DEFINE_WAYLAND_SURFACE_ROLE_SIMPLE (XWayland, xwayland,
+                                         xwayland_surface_assigned,
+                                         xwayland_surface_commit,
+                                         NULL);

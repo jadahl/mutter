@@ -30,6 +30,9 @@
 #include <meta/meta-cursor-tracker.h>
 #include "meta-wayland-types.h"
 #include "meta-surface-actor.h"
+#include "backends/meta-monitor-manager-private.h"
+
+typedef struct _MetaWaylandPendingState MetaWaylandPendingState;
 
 #define META_TYPE_WAYLAND_SURFACE (meta_wayland_surface_get_type ())
 G_DECLARE_FINAL_TYPE (MetaWaylandSurface,
@@ -37,24 +40,79 @@ G_DECLARE_FINAL_TYPE (MetaWaylandSurface,
                       META, WAYLAND_SURFACE,
                       GObject);
 
+typedef GType MetaWaylandSurfaceRoleType;
+
+#define META_TYPE_WAYLAND_SURFACE_ROLE (meta_wayland_surface_role_get_type ())
+G_DECLARE_DERIVABLE_TYPE (MetaWaylandSurfaceRole, meta_wayland_surface_role,
+                          META, WAYLAND_SURFACE_ROLE, GObject);
+
+struct _MetaWaylandSurfaceRoleClass
+{
+  GObjectClass parent_class;
+
+  void (*assigned) (MetaWaylandSurface *surface);
+  void (*commit) (MetaWaylandSurface      *surface,
+                  MetaWaylandPendingState *pending);
+  gboolean (*is_on_output) (MetaWaylandSurface *surface,
+                            MetaMonitorInfo    *monitor);
+};
+
+#define META_DECLARE_WAYLAND_SURFACE_ROLE(ROLE_NAME, RoleName, role_name)     \
+  G_DECLARE_FINAL_TYPE (MetaWaylandSurfaceRole##RoleName,                     \
+                        meta_wayland_surface_role_##role_name,                \
+                        META, WAYLAND_SURFACE_ROLE_##ROLE_NAME,               \
+                        MetaWaylandSurfaceRole)
+
+#define META_DEFINE_WAYLAND_SURFACE_ROLE(RoleName, role_name,                 \
+                                         assigned_fun,                        \
+                                         commit_fun,                          \
+                                         is_on_output_fun)                    \
+  GType meta_wayland_surface_role_##role_name##_get_type (void) G_GNUC_CONST; \
+  G_DEFINE_TYPE (MetaWaylandSurfaceRole##RoleName,                            \
+                 meta_wayland_surface_role_##role_name,                       \
+                 META_TYPE_WAYLAND_SURFACE_ROLE);                             \
+  static void                                                                 \
+  meta_wayland_surface_role_##role_name##_init (                              \
+    MetaWaylandSurfaceRole##RoleName *role)                                   \
+  { }                                                                         \
+  static void                                                                 \
+  meta_wayland_surface_role_##role_name##_class_init (                        \
+    MetaWaylandSurfaceRole##RoleName##Class *klass)                           \
+  {                                                                           \
+    MetaWaylandSurfaceRoleClass *surface_role_class =                         \
+      META_WAYLAND_SURFACE_ROLE_CLASS (klass);                                \
+                                                                              \
+    surface_role_class->assigned = assigned_fun;                              \
+    surface_role_class->commit = commit_fun;                                  \
+    surface_role_class->is_on_output = is_on_output_fun;                      \
+  }
+
+#define META_DEFINE_WAYLAND_SURFACE_ROLE_SIMPLE(RoleName, role_name,          \
+                                                assigned_fun,                 \
+                                                commit_fun,                   \
+                                                is_on_output_fun)             \
+  struct _MetaWaylandSurfaceRole##RoleName                                    \
+  {                                                                           \
+    MetaWaylandSurfaceRole parent;                                            \
+  };                                                                          \
+  META_DEFINE_WAYLAND_SURFACE_ROLE (RoleName, role_name,                      \
+                                    assigned_fun,                             \
+                                    commit_fun,                               \
+                                    is_on_output_fun)
+
 struct _MetaWaylandSerial {
   gboolean set;
   uint32_t value;
 };
 
-typedef enum
-{
-  META_WAYLAND_SURFACE_ROLE_NONE,
-  META_WAYLAND_SURFACE_ROLE_SUBSURFACE,
-  META_WAYLAND_SURFACE_ROLE_XDG_SURFACE,
-  META_WAYLAND_SURFACE_ROLE_XDG_POPUP,
-  META_WAYLAND_SURFACE_ROLE_WL_SHELL_SURFACE,
-  META_WAYLAND_SURFACE_ROLE_CURSOR,
-  META_WAYLAND_SURFACE_ROLE_DND,
-  META_WAYLAND_SURFACE_ROLE_XWAYLAND,
-} MetaWaylandSurfaceRole;
+META_DECLARE_WAYLAND_SURFACE_ROLE (SUBSURFACE, Subsurface, subsurface);
+META_DECLARE_WAYLAND_SURFACE_ROLE (XDG_SURFACE, XdgSurface, xdg_surface);
+META_DECLARE_WAYLAND_SURFACE_ROLE (XDG_POPUP, XdgPopup, xdg_popup);
+META_DECLARE_WAYLAND_SURFACE_ROLE (WL_SHELL_SURFACE, WlShellSurface, wl_shell_surface);
+META_DECLARE_WAYLAND_SURFACE_ROLE (CURSOR, Cursor, cursor);
+META_DECLARE_WAYLAND_SURFACE_ROLE (DND, DND, dnd);
 
-typedef struct
+struct _MetaWaylandPendingState
 {
   /* wl_surface.attach */
   gboolean newly_attached;
@@ -78,7 +136,7 @@ typedef struct
 
   MetaRectangle new_geometry;
   gboolean has_new_geometry;
-} MetaWaylandPendingState;
+};
 
 struct _MetaWaylandDragDestFuncs
 {
@@ -102,7 +160,7 @@ struct _MetaWaylandSurface
   struct wl_resource *resource;
   MetaWaylandCompositor *compositor;
   MetaSurfaceActor *surface_actor;
-  MetaWaylandSurfaceRole role;
+  MetaWaylandSurfaceRole *role;
   MetaWindow *window;
   MetaWaylandBuffer *buffer;
   struct wl_listener buffer_destroy_listener;
@@ -180,10 +238,10 @@ MetaWaylandSurface *meta_wayland_surface_create (MetaWaylandCompositor *composit
                                                  struct wl_resource    *compositor_resource,
                                                  guint32                id);
 
-int                meta_wayland_surface_set_role (MetaWaylandSurface    *surface,
-                                                  MetaWaylandSurfaceRole role,
-                                                  struct wl_resource    *error_resource,
-                                                  uint32_t               error_code);
+int                meta_wayland_surface_set_role (MetaWaylandSurface        *surface,
+                                                  MetaWaylandSurfaceRoleType role_type,
+                                                  struct wl_resource        *error_resource,
+                                                  uint32_t                   error_code);
 
 void                meta_wayland_surface_set_window (MetaWaylandSurface *surface,
                                                      MetaWindow         *window);

@@ -538,7 +538,7 @@ data_device_start_drag (struct wl_client *client,
 
   if (icon_resource &&
       meta_wayland_surface_set_role (icon_surface,
-                                     META_WAYLAND_SURFACE_ROLE_DND,
+                                     meta_wayland_surface_role_dnd_get_type (),
                                      resource,
                                      WL_DATA_DEVICE_ERROR_ROLE) != 0)
     return;
