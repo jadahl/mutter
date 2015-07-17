@@ -76,6 +76,7 @@
 #include <X11/extensions/Xcomposite.h>
 #include "meta-sync-ring.h"
 
+#include "backends/meta-stage.h"
 #include "backends/x11/meta-backend-x11.h"
 
 #ifdef HAVE_WAYLAND
@@ -1044,6 +1045,7 @@ meta_pre_paint_func (gpointer data)
   GList *l;
   MetaWindowActor *top_window;
   MetaCompositor *compositor = data;
+  MetaDisplay *display = compositor->display;
 
   if (compositor->onscreen == NULL)
     {
@@ -1095,7 +1097,7 @@ meta_pre_paint_func (gpointer data)
       if (compositor->have_x11_sync_object)
         compositor->have_x11_sync_object = meta_sync_ring_insert_wait ();
       else
-        XSync (compositor->display->xdisplay, False);
+        XSync (display->xdisplay, False);
     }
 
   return TRUE;
