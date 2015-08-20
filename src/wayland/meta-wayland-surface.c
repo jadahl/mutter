@@ -543,6 +543,25 @@ apply_pending_state (MetaWaylandSurface      *surface,
   switch (surface->role)
     {
     case META_WAYLAND_SURFACE_ROLE_NONE:
+    case META_WAYLAND_SURFACE_ROLE_XWAYLAND:
+      /* We cannot wait for the actor to be painted until we reply to the frame
+       * callback because this would cause Xwayland to stop posting more damage.
+       *
+       * When initializing, i.e. before the window has been mapped, the effect of
+       * complying with the frame callback specification is that XWayland will not
+       * post any damage until after we map the surface actor, and we would
+       * initially draw the inital content (usually black).
+       *
+       * After having being mapped, the effect is that frame callbacks are still
+       * replied to even though the surface was not drawn due to not being visible.
+       *
+       * TODO:
+       *  - Special case initial map of XWayland to let it fill the content before
+       *    we map it.
+       *  - Go through the surface actors frame callback list until some time after
+       *    it has been mapped so can avoid wasting buffers when the window is
+       *    hidden.
+       */
     case META_WAYLAND_SURFACE_ROLE_CURSOR:
     case META_WAYLAND_SURFACE_ROLE_DND:
       wl_list_insert_list (&compositor->frame_callbacks, &pending->frame_callback_list);
@@ -560,6 +579,7 @@ apply_pending_state (MetaWaylandSurface      *surface,
   switch (surface->role)
     {
     case META_WAYLAND_SURFACE_ROLE_NONE:
+    case META_WAYLAND_SURFACE_ROLE_XWAYLAND:
       break;
     case META_WAYLAND_SURFACE_ROLE_CURSOR:
       cursor_surface_commit (surface, pending);
