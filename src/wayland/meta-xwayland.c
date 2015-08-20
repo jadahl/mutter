@@ -45,6 +45,12 @@ associate_window_with_surface (MetaWindow         *window,
   if (window->surface)
     window->surface->window = NULL;
 
+  if (meta_wayland_surface_set_role (surface,
+                                     META_WAYLAND_SURFACE_ROLE_XWAYLAND,
+                                     surface->resource,
+                                     WL_DISPLAY_ERROR_INVALID_OBJECT))
+    return;
+
   meta_wayland_surface_set_window (surface, window);
   window->surface = surface;
 
