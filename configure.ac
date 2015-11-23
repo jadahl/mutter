@@ -55,15 +55,12 @@ AM_PATH_GLIB_2_0()
 CANBERRA_GTK=libcanberra-gtk3
 CANBERRA_GTK_VERSION=0.26
 
-CLUTTER_PACKAGE=clutter-1.0
-
 MUTTER_PC_MODULES="
    gtk+-3.0 >= 3.9.11
    gio-unix-2.0 >= 2.35.1
    pango >= 1.2.0
    cairo >= 1.10.0
    gsettings-desktop-schemas >= 3.15.92
-   $CLUTTER_PACKAGE >= 1.23.4
    cogl-1.0 >= 1.17.1
    upower-glib >= 0.99.0
    gnome-desktop-3.0
@@ -80,6 +77,16 @@ MUTTER_PC_MODULES="
    xrender
    x11-xcb
    xcb-randr
+"
+
+CLUTTER_PC_MODULES="
+   cogl-1.0 >= 1.21.2
+   cogl-path-1.0
+   cogl-pango-1.0
+   cairo >= 1.14.0
+   json-glib-1.0 >= 0.12.2
+   pangocairo >= 1.30
+   atk >= 2.5.3
 "
 
 GLIB_GSETTINGS
@@ -187,8 +194,9 @@ fi
 AC_SUBST(XWAYLAND_PATH)
 
 PKG_CHECK_MODULES(MUTTER, $MUTTER_PC_MODULES)
+PKG_CHECK_MODULES(MUTTER_CLUTTER, $CLUTTER_PC_MODULES)
 
-MUTTER_NATIVE_BACKEND_MODULES="clutter-egl-1.0 libdrm libsystemd libinput gudev-1.0 gbm >= 10.3"
+MUTTER_NATIVE_BACKEND_MODULES="libdrm libsystemd libinput gudev-1.0 gbm >= 10.3"
 
 AC_ARG_ENABLE(native-backend,
   AS_HELP_STRING([--disable-native-backend], [disable mutter native (KMS) backend]),,
@@ -203,7 +211,7 @@ AS_IF([test "$have_native_backend" = "yes"], [
 ])
 AM_CONDITIONAL([HAVE_NATIVE_BACKEND],[test "$have_native_backend" = "yes"])
 
-MUTTER_WAYLAND_MODULES="clutter-wayland-1.0 clutter-wayland-compositor-1.0 wayland-server >= 1.6.90"
+MUTTER_WAYLAND_MODULES="wayland-server >= 1.6.90"
 
 AC_ARG_ENABLE(wayland,
   AS_HELP_STRING([--disable-wayland], [disable mutter on wayland support]),,
@@ -224,10 +232,6 @@ AM_CONDITIONAL([HAVE_WAYLAND],[test "$have_wayland" = "yes"])
 
 PKG_CHECK_EXISTS([xi >= 1.6.99.1],
                  AC_DEFINE([HAVE_XI23],[1],[Define if you have support for XInput 2.3 or greater]))
-
-# This is used for plugins
-AC_SUBST(CLUTTER_PACKAGE)
-PKG_CHECK_MODULES(CLUTTER, $CLUTTER_PACKAGE)
 
 AC_PATH_XTRA
 
@@ -332,6 +336,31 @@ AC_ARG_ENABLE(compile_warnings,
   AS_HELP_STRING([--enable-compile-warnings=@<:@no/minimum/yes/maximum/error@:>@],[Turn on compiler warnings]),,
   enable_compile_warnings=error)
 
+CLUTTER_CONFIG_DEFINES="
+#define CLUTTER_WINDOWING_X11 \"x11\"
+#define CLUTTER_INPUT_X11 \"x11\""
+
+AS_IF([test "$have_native_backend" = "yes"],
+      [CLUTTER_CONFIG_DEFINES="$CLUTTER_CONFIG_DEFINES
+#define CLUTTER_WINDOWING_EGL \"eglnative\"
+#define CLUTTER_INPUT_EVDEV \"evdev\""])
+
+AS_IF([test "$have_wayland" = "yes"],
+      [CLUTTER_CONFIG_DEFINES="$CLUTTER_CONFIG_DEFINES
+#define CLUTTER_HAS_WAYLAND_COMPOSITOR_SUPPORT 1
+#define CLUTTER_WINDOWING_WAYLAND \"wayland\"
+#define CLUTTER_INPUT_WAYLAND \"wayland\""])
+
+CLUTTER_CONFIG_DEFINES="$CLUTTER_CONFIG_DEFINES
+#define CLUTTER_INPUT_NULL \"null\""
+
+AC_SUBST([CLUTTER_CONFIG_DEFINES])
+
+AC_SUBST([CLUTTER_MAJOR_VERSION],  [1])
+AC_SUBST([CLUTTER_MINOR_VERSION],  [24])
+AC_SUBST([CLUTTER_MICRO_VERSION],  [3])
+AC_SUBST([CLUTTER_VERSION],        [1.24.3])
+
 changequote(,)dnl
 if test "$enable_compile_warnings" != no ; then
   if test "x$GCC" = "xyes"; then
@@ -399,6 +428,9 @@ src/Makefile
 src/libmutter.pc
 src/compositor/plugins/Makefile
 src/meta/meta-version.h
+clutter/Makefile
+clutter/clutter-config.h
+clutter/clutter-version.h
 po/Makefile.in
 ])
 

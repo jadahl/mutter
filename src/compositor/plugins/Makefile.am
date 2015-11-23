@@ -16,7 +16,7 @@ AM_CPPFLAGS = \
 default_la_CFLAGS   = -fPIC
 default_la_SOURCES  = default.c
 default_la_LDFLAGS  = -module -avoid-version -no-undefined
-default_la_LIBADD   = $(CLUTTER_LIBS)
+default_la_LIBADD   = ../../../clutter/libmutter-clutter.la
 
 pkglib_LTLIBRARIES = default.la
 

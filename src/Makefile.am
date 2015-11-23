@@ -308,7 +308,7 @@ endif
 nodist_libmutter_la_SOURCES = $(mutter_built_sources)
 
 libmutter_la_LDFLAGS = -no-undefined -export-symbols-regex "^(meta|ag)_.*"
-libmutter_la_LIBADD  = $(MUTTER_LIBS) $(MUTTER_NATIVE_BACKEND_LIBS)
+libmutter_la_LIBADD  = $(MUTTER_LIBS) $(MUTTER_NATIVE_BACKEND_LIBS) ../clutter/libmutter-clutter.la
 
 # Headers installed for plugins; introspected information will
 # be extracted into Mutter-<version>.gir
