@@ -1,0 +1,6 @@
+clutter-enum-types.c
+clutter-enum-types.h
+clutter-marshal.list
+clutter-version.h
+stamp-enum-types
+stamp-marshal
