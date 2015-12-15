@@ -92,6 +92,8 @@ struct _MetaWaylandSurfaceRoleShellSurfaceClass
                      int                                 new_width,
                      int                                 new_height,
                      MetaWaylandSerial                  *sent_serial);
+  void (*managed) (MetaWaylandSurfaceRoleShellSurface *shell_surface_role,
+                   MetaWindow                         *window);
   void (*ping) (MetaWaylandSurfaceRoleShellSurface *shell_surface_role,
                 uint32_t                            serial);
   void (*close) (MetaWaylandSurfaceRoleShellSurface *shell_surface_role);
@@ -307,4 +309,8 @@ gboolean             meta_wayland_surface_begin_grab_op (MetaWaylandSurface *sur
                                                          MetaGrabOp          grab_op,
                                                          gfloat              x,
                                                          gfloat              y);
+
+void                 meta_wayland_surface_window_managed (MetaWaylandSurface *surface,
+                                                          MetaWindow         *window);
+
 #endif

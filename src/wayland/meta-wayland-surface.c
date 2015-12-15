@@ -144,6 +144,10 @@ meta_wayland_surface_role_shell_surface_close (MetaWaylandSurfaceRoleShellSurfac
 static void
 meta_wayland_surface_role_shell_surface_popup_done (MetaWaylandSurfaceRoleShellSurface *shell_surface_role);
 
+static void
+meta_wayland_surface_roll_shell_surface_managed (MetaWaylandSurfaceRoleShellSurface *shell_surface_role,
+                                                 MetaWindow                         *window);
+
 gboolean
 meta_wayland_surface_assign_role (MetaWaylandSurface *surface,
                                   GType               role_type)
@@ -1588,6 +1592,16 @@ meta_wayland_surface_popup_done (MetaWaylandSurface *surface)
 }
 
 void
+meta_wayland_surface_window_managed (MetaWaylandSurface *surface,
+                                     MetaWindow         *window)
+{
+  MetaWaylandSurfaceRoleShellSurface *shell_surface_role =
+    META_WAYLAND_SURFACE_ROLE_SHELL_SURFACE (surface->role);
+
+  meta_wayland_surface_roll_shell_surface_managed (shell_surface_role, window);
+}
+
+void
 meta_wayland_surface_drag_dest_focus_in (MetaWaylandSurface   *surface,
                                          MetaWaylandDataOffer *offer)
 {
@@ -1811,6 +1825,16 @@ meta_wayland_surface_role_shell_surface_popup_done (MetaWaylandSurfaceRoleShellS
     META_WAYLAND_SURFACE_ROLE_SHELL_SURFACE_GET_CLASS (shell_surface_role);
 
   shell_surface_role_class->popup_done (shell_surface_role);
+}
+
+static void
+meta_wayland_surface_roll_shell_surface_managed (MetaWaylandSurfaceRoleShellSurface *shell_surface_role,
+                                                 MetaWindow                         *window)
+{
+  MetaWaylandSurfaceRoleShellSurfaceClass *shell_surface_role_class =
+    META_WAYLAND_SURFACE_ROLE_SHELL_SURFACE_GET_CLASS (shell_surface_role);
+
+  shell_surface_role_class->managed (shell_surface_role, window);
 }
 
 void
