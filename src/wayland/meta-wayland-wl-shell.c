@@ -101,6 +101,12 @@ wl_shell_surface_destructor (struct wl_resource *resource)
   g_free (wl_shell_surface->title);
   g_free (wl_shell_surface->wm_class);
 
+  if (surface->popup.parent)
+    {
+      wl_list_remove (&surface->popup.parent_destroy_listener.link);
+      surface->popup.parent = NULL;
+    }
+
   surface->wl_shell_surface = NULL;
 }
 
