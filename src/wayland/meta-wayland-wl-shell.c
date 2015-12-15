@@ -78,6 +78,12 @@ wl_shell_surface_destructor (struct wl_resource *resource)
       meta_wayland_popup_dismiss (surface->popup.popup);
     }
 
+  if (surface->popup.parent)
+    {
+      wl_list_remove (&surface->popup.parent_destroy_listener.link);
+      surface->popup.parent = NULL;
+    }
+
   surface->wl_shell_surface = NULL;
 }
 
