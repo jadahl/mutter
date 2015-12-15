@@ -543,6 +543,11 @@ static void
 wl_shell_surface_role_managed (MetaWaylandSurfaceRoleShellSurface *shell_surface_role,
                                MetaWindow                         *window)
 {
+  MetaWaylandSurfaceRoleWlShellSurface *role =
+    META_WAYLAND_SURFACE_ROLE_WL_SHELL_SURFACE (shell_surface_role);
+
+  if (role->state == META_WL_SHELL_SURFACE_STATE_POPUP)
+    meta_window_set_type (window, META_WINDOW_DROPDOWN_MENU);
 }
 
 static void
