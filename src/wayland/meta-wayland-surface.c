@@ -128,6 +128,9 @@ static gboolean
 meta_wayland_surface_role_is_on_output (MetaWaylandSurfaceRole *surface_role,
                                         MetaMonitorInfo *info);
 
+static MetaWaylandSurface *
+meta_wayland_surface_role_get_toplevel (MetaWaylandSurfaceRole *surface_role);
+
 static void
 meta_wayland_surface_role_shell_surface_configure (MetaWaylandSurfaceRoleShellSurface *shell_surface_role,
                                                    int                                 new_width,
@@ -506,8 +509,8 @@ meta_wayland_pending_state_class_init (MetaWaylandPendingStateClass *klass)
 }
 
 static void
-subsurface_surface_commit (MetaWaylandSurfaceRole  *surface_role,
-                           MetaWaylandPendingState *pending)
+subsurface_role_commit (MetaWaylandSurfaceRole  *surface_role,
+                        MetaWaylandPendingState *pending)
 {
   MetaWaylandSurface *surface =
     meta_wayland_surface_role_get_surface (surface_role);
@@ -520,6 +523,16 @@ subsurface_surface_commit (MetaWaylandSurfaceRole  *surface_role,
     clutter_actor_show (CLUTTER_ACTOR (surface_actor));
   else
     clutter_actor_hide (CLUTTER_ACTOR (surface_actor));
+}
+
+static MetaWaylandSurface *
+subsurface_role_get_toplevel (MetaWaylandSurfaceRole *surface_role)
+{
+  MetaWaylandSurface *surface =
+    meta_wayland_surface_role_get_surface (surface_role);
+  MetaWaylandSurface *parent = surface->sub.parent;
+
+  return meta_wayland_surface_role_get_toplevel (parent->role);
 }
 
 /* A non-subsurface is always desynchronized.
@@ -1639,23 +1652,25 @@ meta_wayland_surface_drag_dest_drop (MetaWaylandSurface *surface)
   surface->dnd.funcs->drop (data_device, surface);
 }
 
+MetaWaylandSurface *
+meta_wayland_surface_get_toplevel (MetaWaylandSurface *surface)
+{
+  if (surface->role)
+    return meta_wayland_surface_role_get_toplevel (surface->role);
+  else
+    return NULL;
+}
+
 MetaWindow *
 meta_wayland_surface_get_toplevel_window (MetaWaylandSurface *surface)
 {
-  while (surface)
-    {
-      if (surface->window)
-        {
-          if (surface->popup.parent)
-            surface = surface->popup.parent;
-          else
-            return surface->window;
-        }
-      else
-        surface = surface->sub.parent;
-    }
+  MetaWaylandSurface *toplevel;
 
-  return NULL;
+  toplevel = meta_wayland_surface_get_toplevel (surface);
+  if (toplevel)
+    return toplevel->window;
+  else
+    return NULL;
 }
 
 void
@@ -1773,6 +1788,18 @@ meta_wayland_surface_role_is_on_output (MetaWaylandSurfaceRole *surface_role,
     return klass->is_on_output (surface_role, monitor);
   else
     return FALSE;
+}
+
+static MetaWaylandSurface *
+meta_wayland_surface_role_get_toplevel (MetaWaylandSurfaceRole *surface_role)
+{
+  MetaWaylandSurfaceRoleClass *klass;
+
+  klass = META_WAYLAND_SURFACE_ROLE_GET_CLASS (surface_role);
+  if (klass->get_toplevel)
+    return klass->get_toplevel (surface_role);
+  else
+    return NULL;
 }
 
 MetaWaylandSurface *
@@ -1929,5 +1956,6 @@ meta_wayland_surface_role_subsurface_class_init (MetaWaylandSurfaceRoleSubsurfac
   MetaWaylandSurfaceRoleClass *surface_role_class =
     META_WAYLAND_SURFACE_ROLE_CLASS (klass);
 
-  surface_role_class->commit = subsurface_surface_commit;
+  surface_role_class->commit = subsurface_role_commit;
+  surface_role_class->get_toplevel = subsurface_role_get_toplevel;
 }
