@@ -92,6 +92,12 @@ wl_shell_surface_destructor (struct wl_resource *resource)
         META_WAYLAND_WL_SHELL_SURFACE (child_surface->role);
 
       child_wl_shell_surface->parent_surface = NULL;
+
+      if (child_surface->popup.parent == surface)
+        {
+          meta_wayland_popup_dismiss (child_surface->popup.popup);
+          child_surface->popup.parent = NULL;
+        }
     }
 
   if (wl_shell_surface->parent_surface)
@@ -109,12 +115,6 @@ wl_shell_surface_destructor (struct wl_resource *resource)
 
   g_free (wl_shell_surface->title);
   g_free (wl_shell_surface->wm_class);
-
-  if (surface->popup.parent)
-    {
-      wl_list_remove (&surface->popup.parent_destroy_listener.link);
-      surface->popup.parent = NULL;
-    }
 
   surface->wl_shell_surface = NULL;
 }
@@ -294,17 +294,6 @@ wl_shell_surface_set_fullscreen (struct wl_client   *client,
 }
 
 static void
-handle_wl_shell_popup_parent_destroyed (struct wl_listener *listener,
-                                        void *data)
-{
-  MetaWaylandSurface *surface =
-    wl_container_of (listener, surface, popup.parent_destroy_listener);
-
-  wl_list_remove (&surface->popup.parent_destroy_listener.link);
-  surface->popup.parent = NULL;
-}
-
-static void
 wl_shell_surface_set_popup (struct wl_client   *client,
                             struct wl_resource *resource,
                             struct wl_resource *seat_resource,
@@ -328,15 +317,6 @@ wl_shell_surface_set_popup (struct wl_client   *client,
     {
       wl_shell_surface_send_popup_done (resource);
       return;
-    }
-
-  if (!surface->popup.parent)
-    {
-      surface->popup.parent = parent_surf;
-      surface->popup.parent_destroy_listener.notify =
-        handle_wl_shell_popup_parent_destroyed;
-      wl_resource_add_destroy_listener (parent_surf->resource,
-                                        &surface->popup.parent_destroy_listener);
     }
 
   set_wl_shell_surface_parent (surface, parent_surf);
