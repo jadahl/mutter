@@ -186,25 +186,11 @@ struct _MetaWaylandSurface
   MetaWaylandPendingState *pending;
 
   /* Extension resources. */
-  struct wl_resource *xdg_surface;
-  struct wl_resource *xdg_popup;
-  struct wl_resource *wl_shell_surface;
   struct wl_resource *gtk_surface;
   struct wl_resource *wl_subsurface;
 
-  /* xdg_surface stuff */
-  struct wl_resource *xdg_shell_resource;
-  MetaWaylandSerial acked_configure_serial;
-  gboolean has_set_geometry;
+  /* gtk_surface stuff */
   gboolean is_modal;
-
-  /* xdg_popup */
-  struct {
-    MetaWaylandSurface *parent;
-    struct wl_listener parent_destroy_listener;
-
-    MetaWaylandPopup *popup;
-  } popup;
 
   /* wl_subsurface stuff. */
   struct {
