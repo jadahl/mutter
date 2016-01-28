@@ -228,7 +228,9 @@ MetaWaylandSurface *meta_wayland_surface_create (MetaWaylandCompositor *composit
                                                  guint32                id);
 
 gboolean            meta_wayland_surface_assign_role (MetaWaylandSurface *surface,
-                                                      GType               role_type);
+                                                      GType               role_type,
+                                                      const char         *first_property_name,
+                                                      ...);
 
 void                meta_wayland_surface_set_window (MetaWaylandSurface *surface,
                                                      MetaWindow         *window);

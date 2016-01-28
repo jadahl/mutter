@@ -958,7 +958,9 @@ xdg_surface_constructor_get_toplevel (struct wl_client   *client,
   MetaWaylandXdgSurface *xdg_surface;
   MetaWindow *window;
 
-  if (!meta_wayland_surface_assign_role (surface, META_TYPE_WAYLAND_XDG_TOPLEVEL))
+  if (!meta_wayland_surface_assign_role (surface,
+                                         META_TYPE_WAYLAND_XDG_TOPLEVEL,
+                                         NULL))
     {
       wl_resource_post_error (resource, ZXDG_SHELL_V6_ERROR_ROLE,
                               "wl_surface@%d already has a different role",
@@ -1008,7 +1010,9 @@ xdg_surface_constructor_get_popup (struct wl_client   *client,
   MetaWaylandXdgSurface *xdg_surface;
   MetaWaylandPopup *popup;
 
-  if (!meta_wayland_surface_assign_role (surface, META_TYPE_WAYLAND_XDG_POPUP))
+  if (!meta_wayland_surface_assign_role (surface,
+                                         META_TYPE_WAYLAND_XDG_POPUP,
+                                         NULL))
     {
       wl_resource_post_error (xdg_shell_resource, ZXDG_SHELL_V6_ERROR_ROLE,
                               "wl_surface@%d already has a different role",
