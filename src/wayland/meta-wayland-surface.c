@@ -189,6 +189,11 @@ role_assignment_valist_to_params (GType       role_type,
           GObject *object = va_arg (var_args, GObject *);
           g_value_set_object (&param.value, object);
         }
+      else if (ptype == G_TYPE_POINTER)
+        {
+          gpointer pointer = va_arg (var_args, gpointer);
+          g_value_set_pointer (&param.value, pointer);
+        }
       else
         {
           g_assert_not_reached ();

@@ -35,6 +35,14 @@
 #include "wayland/meta-window-wayland.h"
 #include "xdg-shell-unstable-v6-server-protocol.h"
 
+enum
+{
+  XDG_SURFACE_PROP_0,
+
+  XDG_SURFACE_PROP_SHELL_CLIENT,
+  XDG_SURFACE_PROP_RESOURCE,
+};
+
 typedef struct _MetaWaylandXdgShellClient
 {
   struct wl_resource *resource;
@@ -892,6 +900,56 @@ xdg_surface_role_ping (MetaWaylandSurfaceRoleShellSurface *shell_surface_role,
 }
 
 static void
+meta_wayland_xdg_surface_set_property (GObject      *object,
+                                       guint         prop_id,
+                                       const GValue *value,
+                                       GParamSpec   *pspec)
+{
+  MetaWaylandXdgSurface *xdg_surface = META_WAYLAND_XDG_SURFACE (object);
+  MetaWaylandXdgSurfacePrivate *priv =
+    meta_wayland_xdg_surface_get_instance_private (xdg_surface);
+
+  switch (prop_id)
+    {
+    case XDG_SURFACE_PROP_SHELL_CLIENT:
+      priv->shell_client  = g_value_get_pointer (value);
+      break;
+
+    case XDG_SURFACE_PROP_RESOURCE:
+      priv->resource  = g_value_get_pointer (value);
+      break;
+
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+    }
+}
+
+static void
+meta_wayland_xdg_surface_get_property (GObject      *object,
+                                       guint       prop_id,
+                                       GValue     *value,
+                                       GParamSpec *pspec)
+{
+  MetaWaylandXdgSurface *xdg_surface = META_WAYLAND_XDG_SURFACE (object);
+  MetaWaylandXdgSurfacePrivate *priv =
+    meta_wayland_xdg_surface_get_instance_private (xdg_surface);
+
+  switch (prop_id)
+    {
+    case XDG_SURFACE_PROP_SHELL_CLIENT:
+      g_value_set_pointer (value, priv->shell_client);
+      break;
+
+    case XDG_SURFACE_PROP_RESOURCE:
+      g_value_set_pointer (value, priv->resource);
+      break;
+
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+    }
+}
+
+static void
 meta_wayland_xdg_surface_init (MetaWaylandXdgSurface *xdg_surface)
 {
 }
@@ -902,9 +960,12 @@ meta_wayland_xdg_surface_class_init (MetaWaylandXdgSurfaceClass *klass)
   GObjectClass *object_class;
   MetaWaylandSurfaceRoleClass *surface_role_class;
   MetaWaylandSurfaceRoleShellSurfaceClass *shell_surface_role_class;
+  GParamSpec *pspec;
 
   object_class = G_OBJECT_CLASS (klass);
   object_class->finalize = xdg_surface_role_finalize;
+  object_class->set_property = meta_wayland_xdg_surface_set_property;
+  object_class->get_property = meta_wayland_xdg_surface_get_property;
 
   surface_role_class = META_WAYLAND_SURFACE_ROLE_CLASS (klass);
   surface_role_class->commit = xdg_surface_role_commit;
@@ -912,6 +973,25 @@ meta_wayland_xdg_surface_class_init (MetaWaylandXdgSurfaceClass *klass)
   shell_surface_role_class =
     META_WAYLAND_SURFACE_ROLE_SHELL_SURFACE_CLASS (klass);
   shell_surface_role_class->ping = xdg_surface_role_ping;
+
+  klass->shell_client_destroyed = xdg_surface_role_shell_client_destroyed;
+
+  pspec = g_param_spec_pointer ("shell-client",
+                                "MetaWaylandXdgShellClient",
+                                "The shell client instance",
+                                G_PARAM_READWRITE |
+                                G_PARAM_STATIC_STRINGS);
+  g_object_class_install_property (object_class,
+                                   XDG_SURFACE_PROP_SHELL_CLIENT,
+                                   pspec);
+  pspec = g_param_spec_pointer ("xdg-surface-resource",
+                                "xdg_surface wl_resource",
+                                "The xdg_surface wl_resource instance",
+                                G_PARAM_READWRITE |
+                                G_PARAM_STATIC_STRINGS);
+  g_object_class_install_property (object_class,
+                                   XDG_SURFACE_PROP_RESOURCE,
+                                   pspec);
 }
 
 static void
@@ -919,20 +999,16 @@ meta_wayland_xdg_surface_constructor_finalize (MetaWaylandXdgSurfaceConstructor 
                                                MetaWaylandXdgSurface            *xdg_surface)
 {
   MetaWaylandXdgShellClient *shell_client = constructor->shell_client;
-  MetaWaylandXdgSurfacePrivate *priv =
-    meta_wayland_xdg_surface_get_instance_private (xdg_surface);
 
   shell_client->surface_constructors =
     g_list_remove (shell_client->surface_constructors, constructor);
   shell_client->surfaces = g_list_append (shell_client->surfaces, xdg_surface);
 
-  priv->shell_client = shell_client;
-  priv->resource = constructor->resource;
-
   wl_resource_set_implementation (constructor->resource,
                                   &meta_wayland_xdg_surface_interface,
                                   xdg_surface,
                                   xdg_surface_destructor);
+
   g_free (constructor);
 }
 
@@ -953,6 +1029,8 @@ xdg_surface_constructor_get_toplevel (struct wl_client   *client,
 {
   MetaWaylandXdgSurfaceConstructor *constructor =
     wl_resource_get_user_data (resource);
+  MetaWaylandXdgShellClient *shell_client = constructor->shell_client;
+  struct wl_resource *xdg_surface_resource = constructor->resource;
   MetaWaylandSurface *surface = constructor->surface;
   MetaWaylandXdgToplevel *xdg_toplevel;
   MetaWaylandXdgSurface *xdg_surface;
@@ -960,6 +1038,8 @@ xdg_surface_constructor_get_toplevel (struct wl_client   *client,
 
   if (!meta_wayland_surface_assign_role (surface,
                                          META_TYPE_WAYLAND_XDG_TOPLEVEL,
+                                         "shell-client", shell_client,
+                                         "xdg-surface-resource", xdg_surface_resource,
                                          NULL))
     {
       wl_resource_post_error (resource, ZXDG_SHELL_V6_ERROR_ROLE,
@@ -997,8 +1077,10 @@ xdg_surface_constructor_get_popup (struct wl_client   *client,
 {
   MetaWaylandXdgSurfaceConstructor *constructor =
     wl_resource_get_user_data (resource);
+  MetaWaylandXdgShellClient *shell_client = constructor->shell_client;
   MetaWaylandSurface *surface = constructor->surface;
   struct wl_resource *xdg_shell_resource = constructor->shell_client->resource;
+  struct wl_resource *xdg_surface_resource = constructor->resource;
   MetaWaylandPopupSurface *popup_surface;
   MetaWaylandSurface *parent_surf =
     surface_from_xdg_surface_resource (parent_resource);
@@ -1012,6 +1094,8 @@ xdg_surface_constructor_get_popup (struct wl_client   *client,
 
   if (!meta_wayland_surface_assign_role (surface,
                                          META_TYPE_WAYLAND_XDG_POPUP,
+                                         "shell-client", shell_client,
+                                         "xdg-surface-resource", xdg_surface_resource,
                                          NULL))
     {
       wl_resource_post_error (xdg_shell_resource, ZXDG_SHELL_V6_ERROR_ROLE,
