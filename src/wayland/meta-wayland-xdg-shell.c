@@ -497,6 +497,29 @@ xdg_toplevel_role_close (MetaWaylandSurfaceRoleShellSurface *shell_surface_role)
 }
 
 static void
+xdg_toplevel_role_shell_client_destroyed (MetaWaylandXdgSurface *xdg_surface)
+{
+  MetaWaylandXdgToplevel *xdg_toplevel =
+    META_WAYLAND_XDG_TOPLEVEL (xdg_surface);
+  struct wl_resource *xdg_shell_resource =
+    meta_wayland_xdg_surface_get_shell_resource (xdg_surface);
+  MetaWaylandXdgSurfaceClass *xdg_surface_class =
+    META_WAYLAND_XDG_SURFACE_CLASS (meta_wayland_xdg_toplevel_parent_class);
+
+  xdg_surface_class->shell_client_destroyed (xdg_surface);
+
+  if (xdg_toplevel->resource)
+    {
+      wl_resource_post_error (xdg_shell_resource,
+                              ZXDG_SHELL_V6_ERROR_DEFUNCT_SURFACES,
+                              "xdg_shell of xdg_toplevel@%d was destroyed",
+                              wl_resource_get_id (xdg_toplevel->resource));
+
+      wl_resource_destroy (xdg_toplevel->resource);
+    }
+}
+
+static void
 xdg_toplevel_role_finalize (GObject *object)
 {
   MetaWaylandXdgToplevel *xdg_toplevel = META_WAYLAND_XDG_TOPLEVEL (object);
@@ -517,6 +540,7 @@ meta_wayland_xdg_toplevel_class_init (MetaWaylandXdgToplevelClass *klass)
   GObjectClass *object_class;
   MetaWaylandSurfaceRoleClass *surface_role_class;
   MetaWaylandSurfaceRoleShellSurfaceClass *shell_surface_role_class;
+  MetaWaylandXdgSurfaceClass *xdg_surface_class;
 
   object_class = G_OBJECT_CLASS (klass);
   object_class->finalize = xdg_toplevel_role_finalize;
@@ -530,6 +554,10 @@ meta_wayland_xdg_toplevel_class_init (MetaWaylandXdgToplevelClass *klass)
   shell_surface_role_class->configure = xdg_toplevel_role_configure;
   shell_surface_role_class->managed = xdg_toplevel_role_managed;
   shell_surface_role_class->close = xdg_toplevel_role_close;
+
+  xdg_surface_class = META_WAYLAND_XDG_SURFACE_CLASS (klass);
+  xdg_surface_class->shell_client_destroyed =
+    xdg_toplevel_role_shell_client_destroyed;
 }
 
 static void
@@ -597,6 +625,28 @@ xdg_popup_role_managed (MetaWaylandSurfaceRoleShellSurface *shell_surface_role,
 
   meta_window_set_transient_for (window, parent->window);
   meta_window_set_type (window, META_WINDOW_DROPDOWN_MENU);
+}
+
+static void
+xdg_popup_role_shell_client_destroyed (MetaWaylandXdgSurface *xdg_surface)
+{
+  MetaWaylandXdgPopup *xdg_popup = META_WAYLAND_XDG_POPUP (xdg_surface);
+  struct wl_resource *xdg_shell_resource =
+    meta_wayland_xdg_surface_get_shell_resource (xdg_surface);
+  MetaWaylandXdgSurfaceClass *xdg_surface_class =
+    META_WAYLAND_XDG_SURFACE_CLASS (meta_wayland_xdg_popup_parent_class);
+
+  xdg_surface_class->shell_client_destroyed (xdg_surface);
+
+  if (xdg_popup->resource)
+    {
+      wl_resource_post_error (xdg_shell_resource,
+                              ZXDG_SHELL_V6_ERROR_DEFUNCT_SURFACES,
+                              "xdg_shell of xdg_popup@%d was destroyed",
+                              wl_resource_get_id (xdg_popup->resource));
+
+      wl_resource_destroy (xdg_popup->resource);
+    }
 }
 
 static void
@@ -670,6 +720,7 @@ meta_wayland_xdg_popup_class_init (MetaWaylandXdgPopupClass *klass)
   GObjectClass *object_class;
   MetaWaylandSurfaceRoleClass *surface_role_class;
   MetaWaylandSurfaceRoleShellSurfaceClass *shell_surface_role_class;
+  MetaWaylandXdgSurfaceClass *xdg_surface_class;
 
   object_class = G_OBJECT_CLASS (klass);
   object_class->finalize = xdg_popup_role_finalize;
@@ -682,6 +733,10 @@ meta_wayland_xdg_popup_class_init (MetaWaylandXdgPopupClass *klass)
     META_WAYLAND_SURFACE_ROLE_SHELL_SURFACE_CLASS (klass);
   shell_surface_role_class->configure = xdg_popup_role_configure;
   shell_surface_role_class->managed = xdg_popup_role_managed;
+
+  xdg_surface_class = META_WAYLAND_XDG_SURFACE_CLASS (klass);
+  xdg_surface_class->shell_client_destroyed =
+    xdg_popup_role_shell_client_destroyed;
 }
 
 static struct wl_resource *
@@ -900,6 +955,23 @@ xdg_surface_role_ping (MetaWaylandSurfaceRoleShellSurface *shell_surface_role,
 }
 
 static void
+xdg_surface_role_shell_client_destroyed (MetaWaylandXdgSurface *xdg_surface)
+{
+  MetaWaylandXdgSurfacePrivate *priv =
+    meta_wayland_xdg_surface_get_instance_private (xdg_surface);
+
+  if (priv->resource)
+    {
+      wl_resource_post_error (priv->shell_client->resource,
+                              ZXDG_SHELL_V6_ERROR_DEFUNCT_SURFACES,
+                              "xdg_shell of xdg_surface@%d was destroyed",
+                              wl_resource_get_id (priv->resource));
+
+      wl_resource_destroy (priv->resource);
+    }
+}
+
+static void
 meta_wayland_xdg_surface_set_property (GObject      *object,
                                        guint         prop_id,
                                        const GValue *value,
@@ -992,6 +1064,15 @@ meta_wayland_xdg_surface_class_init (MetaWaylandXdgSurfaceClass *klass)
   g_object_class_install_property (object_class,
                                    XDG_SURFACE_PROP_RESOURCE,
                                    pspec);
+}
+
+static void
+meta_wayland_xdg_surface_shell_client_destroyed (MetaWaylandXdgSurface *xdg_surface)
+{
+  MetaWaylandXdgSurfaceClass *xdg_surface_class =
+    META_WAYLAND_XDG_SURFACE_GET_CLASS (xdg_surface);
+
+  xdg_surface_class->shell_client_destroyed (xdg_surface);
 }
 
 static void
@@ -1318,10 +1399,8 @@ xdg_shell_destructor (struct wl_resource *resource)
     {
       MetaWaylandXdgSurface *xdg_surface =
         g_list_first (shell_client->surfaces)->data;
-      MetaWaylandXdgSurfacePrivate *xdg_surface_priv =
-        meta_wayland_xdg_surface_get_instance_private (xdg_surface);
 
-      wl_resource_destroy (xdg_surface_priv->resource);
+      meta_wayland_xdg_surface_shell_client_destroyed  (xdg_surface);
     }
   g_list_free (shell_client->surfaces);
 
