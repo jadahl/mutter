@@ -296,6 +296,7 @@ meta_window_finalize (GObject *object)
   g_free (window->gtk_window_object_path);
   g_free (window->gtk_app_menu_object_path);
   g_free (window->gtk_menubar_object_path);
+  g_free (window->placement_rule);
 
   G_OBJECT_CLASS (meta_window_parent_class)->finalize (object);
 }
@@ -7902,4 +7903,19 @@ void
 meta_window_emit_size_changed (MetaWindow *window)
 {
   g_signal_emit (window, window_signals[SIZE_CHANGED], 0);
+}
+
+void
+meta_window_set_placement_rule (MetaWindow         *window,
+                                MetaPlacementRule *placement_rule)
+{
+  g_clear_pointer (&window->placement_rule, g_free);
+  window->placement_rule = g_new0 (MetaPlacementRule, 1);
+  *window->placement_rule = *placement_rule;
+}
+
+MetaPlacementRule *
+meta_window_get_placement_rule (MetaWindow *window)
+{
+  return window->placement_rule;
 }

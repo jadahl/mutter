@@ -88,6 +88,43 @@ typedef enum
   META_MOVE_RESIZE_RESULT_FRAME_SHAPE_CHANGED = 1 << 2,
 } MetaMoveResizeResultFlags;
 
+typedef enum
+{
+  META_PLACEMENT_GRAVITY_NONE   = 0,
+  META_PLACEMENT_GRAVITY_LEFT   = 1 << 0,
+  META_PLACEMENT_GRAVITY_RIGHT  = 1 << 1,
+  META_PLACEMENT_GRAVITY_TOP    = 1 << 2,
+  META_PLACEMENT_GRAVITY_BOTTOM = 1 << 3,
+} MetaPlacementGravity;
+
+typedef enum
+{
+  META_PLACEMENT_ANCHOR_NONE   = 0,
+  META_PLACEMENT_ANCHOR_LEFT   = 1 << 0,
+  META_PLACEMENT_ANCHOR_RIGHT  = 1 << 1,
+  META_PLACEMENT_ANCHOR_TOP    = 1 << 2,
+  META_PLACEMENT_ANCHOR_BOTTOM = 1 << 3,
+} MetaPlacementAnchor;
+
+typedef enum
+{
+  META_PLACEMENT_CONSTRAIN_ACTION_NONE    = 0,
+  META_PLACEMENT_CONSTRAIN_ACTION_SLIDE_X = 1 << 0,
+  META_PLACEMENT_CONSTRAIN_ACTION_SLIDE_Y = 1 << 1,
+  META_PLACEMENT_CONSTRAIN_ACTION_FLIP_X  = 1 << 2,
+  META_PLACEMENT_CONSTRAIN_ACTION_FLIP_Y  = 1 << 3,
+} MetaPlacementConstrainAction;
+
+typedef struct _MetaPlacementRule
+{
+  MetaRectangle anchor_rect;
+  MetaPlacementGravity gravity;
+  MetaPlacementAnchor anchor;
+  MetaPlacementConstrainAction constrain_action;
+  int offset_x;
+  int offset_y;
+} MetaPlacementRule;
+
 struct _MetaWindow
 {
   GObject parent_instance;
@@ -446,6 +483,8 @@ struct _MetaWindow
 
   /* Bypass compositor hints */
   guint bypass_compositor;
+
+  MetaPlacementRule *placement_rule;
 };
 
 struct _MetaWindowClass
@@ -694,5 +733,10 @@ void meta_window_set_alive (MetaWindow *window, gboolean is_alive);
 gboolean meta_window_has_pointer (MetaWindow *window);
 
 void meta_window_emit_size_changed (MetaWindow *window);
+
+void meta_window_set_placement_rule (MetaWindow        *window,
+                                     MetaPlacementRule *placement_rule);
+
+MetaPlacementRule *meta_window_get_placement_rule (MetaWindow *window);
 
 #endif
