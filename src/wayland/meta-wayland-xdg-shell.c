@@ -50,6 +50,16 @@ typedef struct _MetaWaylandXdgShellClient
   GList *surface_constructors;
 } MetaWaylandXdgShellClient;
 
+typedef struct _MetaWaylandXdgPositioner
+{
+  MetaRectangle anchor_rect;
+  uint32_t gravity;
+  uint32_t anchor;
+  uint32_t constrain_action;
+  int32_t offset_x;
+  int32_t offset_y;
+} MetaWaylandXdgPositioner;
+
 typedef struct _MetaWaylandXdgSurfaceConstructor
 {
   MetaWaylandSurface *surface;
@@ -101,6 +111,9 @@ G_DEFINE_TYPE_WITH_CODE (MetaWaylandXdgPopup,
                          META_TYPE_WAYLAND_XDG_SURFACE,
                          G_IMPLEMENT_INTERFACE (META_TYPE_WAYLAND_POPUP_SURFACE,
                                                 popup_surface_iface_init));
+
+static MetaPlacementRule
+meta_wayland_xdg_positioner_to_placement (MetaWaylandXdgPositioner *xdg_positioner);
 
 static struct wl_resource *
 meta_wayland_xdg_surface_get_shell_resource (MetaWaylandXdgSurface *xdg_surface);
@@ -812,8 +825,7 @@ xdg_surface_get_popup (struct wl_client   *client,
                        struct wl_resource *parent_resource,
                        struct wl_resource *seat_resource,
                        uint32_t            serial,
-                       int32_t             x,
-                       int32_t             y)
+                       struct wl_resource *positioner_resource)
 {
   MetaWaylandXdgSurface *xdg_surface = wl_resource_get_user_data (resource);
   MetaWaylandXdgSurfacePrivate *priv =
@@ -831,8 +843,7 @@ xdg_surface_get_tooltip (struct wl_client   *client,
                          struct wl_resource *resource,
                          uint32_t            id,
                          struct wl_resource *parent_resource,
-                         int32_t             x,
-                         int32_t             y)
+                         struct wl_resource *positioner_resource)
 {
   MetaWaylandXdgSurface *xdg_surface = wl_resource_get_user_data (resource);
   MetaWaylandXdgSurfacePrivate *priv =
@@ -1153,8 +1164,7 @@ xdg_surface_constructor_get_popup (struct wl_client   *client,
                                    struct wl_resource *parent_resource,
                                    struct wl_resource *seat_resource,
                                    uint32_t            serial,
-                                   int32_t             x,
-                                   int32_t             y)
+                                   struct wl_resource *positioner_resource)
 {
   MetaWaylandXdgSurfaceConstructor *constructor =
     wl_resource_get_user_data (resource);
@@ -1168,6 +1178,8 @@ xdg_surface_constructor_get_popup (struct wl_client   *client,
   MetaWaylandSurface *top_popup;
   MetaWaylandSeat *seat = wl_resource_get_user_data (seat_resource);
   MetaWindow *window;
+  MetaWaylandXdgPositioner *xdg_positioner;
+  MetaPlacementRule placement_rule;
   MetaDisplay *display = meta_get_display ();
   MetaWaylandXdgPopup *xdg_popup;
   MetaWaylandXdgSurface *xdg_surface;
@@ -1232,7 +1244,10 @@ xdg_surface_constructor_get_popup (struct wl_client   *client,
                                     &xdg_popup->parent_destroy_listener);
 
   window = meta_window_wayland_new (display, surface);
-  meta_window_wayland_place_relative_to (window, parent_surf->window, x, y);
+
+  xdg_positioner = wl_resource_get_user_data (positioner_resource);
+  placement_rule = meta_wayland_xdg_positioner_to_placement (xdg_positioner);
+  meta_window_set_placement_rule (window, &placement_rule);
   window->showing_for_first_time = FALSE;
 
   meta_wayland_surface_set_window (surface, window);
@@ -1256,8 +1271,7 @@ xdg_surface_constructor_get_tooltip (struct wl_client   *client,
                                      struct wl_resource *resource,
                                      uint32_t            id,
                                      struct wl_resource *parent_resource,
-                                     int32_t             x,
-                                     int32_t             y)
+                                     struct wl_resource *positioner_resource)
 {
   meta_warning ("xdg_tooltip support not implemented yet\n");
 }
@@ -1309,6 +1323,140 @@ xdg_surface_constructor_destructor (struct wl_resource *resource)
   g_free (constructor);
 }
 
+static MetaPlacementRule
+meta_wayland_xdg_positioner_to_placement (MetaWaylandXdgPositioner *xdg_positioner)
+{
+  return (MetaPlacementRule) {
+    .anchor_rect = xdg_positioner->anchor_rect,
+    .gravity = xdg_positioner->gravity,
+    .anchor = xdg_positioner->anchor,
+    .constrain_action = xdg_positioner->constrain_action,
+    .offset_x = xdg_positioner->offset_x,
+    .offset_y = xdg_positioner->offset_y,
+  };
+}
+
+static void
+meta_wayland_xdg_positioner_destroy (struct wl_client   *client,
+                                     struct wl_resource *resource)
+{
+  wl_resource_destroy (resource);
+}
+
+static void
+meta_wayland_xdg_positioner_set_anchor_rect (struct wl_client   *client,
+                                             struct wl_resource *resource,
+                                             int32_t             x,
+                                             int32_t             y,
+                                             int32_t             width,
+                                             int32_t             height)
+{
+  MetaWaylandXdgPositioner *positioner = wl_resource_get_user_data (resource);
+
+  if (width <= 0 || height <= 0)
+    {
+      wl_resource_post_error (resource, ZXDG_POSITIONER_V6_ERROR_INVALID_RECT,
+                              "Invalid anchor rectangle size");
+      return;
+    }
+
+  positioner->anchor_rect = (MetaRectangle) {
+    .x = x,
+    .y = y,
+    .width = width,
+    .height = height,
+  };
+}
+
+static void
+meta_wayland_xdg_positioner_set_anchor (struct wl_client   *client,
+                                        struct wl_resource *resource,
+                                        uint32_t            anchor)
+{
+  MetaWaylandXdgPositioner *positioner = wl_resource_get_user_data (resource);
+
+  if ((anchor & ZXDG_POSITIONER_V6_ANCHOR_LEFT &&
+       anchor & ZXDG_POSITIONER_V6_ANCHOR_RIGHT) ||
+      (anchor & ZXDG_POSITIONER_V6_ANCHOR_TOP &&
+       anchor & ZXDG_POSITIONER_V6_ANCHOR_BOTTOM))
+    {
+      wl_resource_post_error (resource, ZXDG_POSITIONER_V6_ERROR_INVALID_ANCHOR,
+                              "Invalid anchor");
+      return;
+    }
+
+  positioner->anchor = anchor;
+}
+
+static void
+meta_wayland_xdg_positioner_set_gravity (struct wl_client   *client,
+                                         struct wl_resource *resource,
+                                         uint32_t            gravity)
+{
+  MetaWaylandXdgPositioner *positioner = wl_resource_get_user_data (resource);
+
+  if ((gravity & ZXDG_POSITIONER_V6_GRAVITY_LEFT &&
+       gravity & ZXDG_POSITIONER_V6_GRAVITY_RIGHT) ||
+      (gravity & ZXDG_POSITIONER_V6_GRAVITY_TOP &&
+       gravity & ZXDG_POSITIONER_V6_GRAVITY_BOTTOM))
+    {
+      wl_resource_post_error (resource, ZXDG_POSITIONER_V6_ERROR_INVALID_GRAVITY,
+                              "Invalid gravity");
+      return;
+    }
+
+  positioner->gravity = gravity;
+}
+
+static void
+meta_wayland_xdg_positioner_set_constrain_action (struct wl_client   *client,
+                                                  struct wl_resource *resource,
+                                                  uint32_t            constrain_action)
+{
+  MetaWaylandXdgPositioner *positioner = wl_resource_get_user_data (resource);
+
+  if ((constrain_action & ZXDG_POSITIONER_V6_CONSTRAIN_ACTION_SLIDE_X &&
+       constrain_action & ZXDG_POSITIONER_V6_CONSTRAIN_ACTION_FLIP_X) ||
+      (constrain_action & ZXDG_POSITIONER_V6_CONSTRAIN_ACTION_SLIDE_Y &&
+       constrain_action & ZXDG_POSITIONER_V6_CONSTRAIN_ACTION_FLIP_Y))
+    {
+      wl_resource_post_error (resource, ZXDG_POSITIONER_V6_ERROR_INVALID_GRAVITY,
+                              "Invalid constrain action");
+      return;
+    }
+
+  positioner->constrain_action = constrain_action;
+}
+
+static void
+meta_wayland_xdg_positioner_set_offset (struct wl_client   *client,
+                                        struct wl_resource *resource,
+                                        int32_t             x,
+                                        int32_t             y)
+{
+  MetaWaylandXdgPositioner *positioner = wl_resource_get_user_data (resource);
+
+  positioner->offset_x = x;
+  positioner->offset_y = y;
+}
+
+static const struct zxdg_positioner_v6_interface meta_wayland_xdg_positioner_interface = {
+  meta_wayland_xdg_positioner_destroy,
+  meta_wayland_xdg_positioner_set_anchor_rect,
+  meta_wayland_xdg_positioner_set_anchor,
+  meta_wayland_xdg_positioner_set_gravity,
+  meta_wayland_xdg_positioner_set_constrain_action,
+  meta_wayland_xdg_positioner_set_offset,
+};
+
+static void
+xdg_positioner_destructor (struct wl_resource *resource)
+{
+  MetaWaylandXdgPositioner *positioner = wl_resource_get_user_data (resource);
+
+  g_free (positioner);
+}
+
 static void
 xdg_shell_destroy (struct wl_client   *client,
                    struct wl_resource *resource)
@@ -1320,6 +1468,25 @@ xdg_shell_destroy (struct wl_client   *client,
                             "xdg_shell destroyed before its surfaces");
 
   wl_resource_destroy (resource);
+}
+
+static void
+xdg_shell_create_positioner (struct wl_client   *client,
+                             struct wl_resource *resource,
+                             uint32_t            id)
+{
+  MetaWaylandXdgPositioner *positioner;
+  struct wl_resource *positioner_resource;
+
+  positioner = g_new0 (MetaWaylandXdgPositioner, 1);
+  positioner_resource = wl_resource_create (client,
+                                            &zxdg_positioner_v6_interface,
+                                            wl_resource_get_version (resource),
+                                            id);
+  wl_resource_set_implementation (positioner_resource,
+                                  &meta_wayland_xdg_positioner_interface,
+                                  positioner,
+                                  xdg_positioner_destructor);
 }
 
 static void
@@ -1377,6 +1544,7 @@ xdg_shell_pong (struct wl_client   *client,
 
 static const struct zxdg_shell_v6_interface meta_wayland_xdg_shell_interface = {
   xdg_shell_destroy,
+  xdg_shell_create_positioner,
   xdg_shell_get_xdg_surface,
   xdg_shell_pong,
 };
