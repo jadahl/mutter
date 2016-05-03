@@ -45,6 +45,8 @@ CoglFrameClosure *clutter_stage_add_frame_callback (ClutterStage     *stage,
 CLUTTER_AVAILABLE_IN_MUTTER
 int64_t clutter_stage_get_frame_counter (ClutterStage *stage);
 
-#undef __CLUTTER_H_INSIDE__
+CLUTTER_AVAILABLE_IN_ALL
+ClutterVirtualInputDevice *clutter_device_manager_create_virtual_device (ClutterDeviceManager  *device_manager,
+                                                                         ClutterInputDeviceType device_type);
 
 #endif /* __CLUTTER_MUTTER_H__ */

@@ -30,6 +30,7 @@
 
 #include <clutter/clutter-input-device.h>
 #include <clutter/clutter-stage.h>
+#include <clutter/clutter-virtual-input-device.h>
 
 G_BEGIN_DECLS
 
@@ -83,6 +84,8 @@ struct _ClutterDeviceManagerClass
                                            ClutterInputDevice     *device);
   void                (* select_stage_events) (ClutterDeviceManager *manager,
                                                ClutterStage       *stage);
+  ClutterVirtualInputDevice *(* create_virtual_device) (ClutterDeviceManager  *manager,
+                                                        ClutterInputDeviceType device_type);
 
   /* padding */
   gpointer _padding[7];
