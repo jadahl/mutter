@@ -197,6 +197,7 @@ source_c = \
 	clutter-snap-constraint.c	\
 	clutter-stage.c		\
 	clutter-stage-manager.c	\
+	clutter-stage-view.c	\
 	clutter-stage-window.c	\
 	clutter-tap-action.c		\
 	clutter-test-utils.c		\
@@ -238,6 +239,7 @@ source_h_priv = \
 	clutter-settings-private.h		\
 	clutter-stage-manager-private.h		\
 	clutter-stage-private.h			\
+	clutter-stage-view.h			\
 	clutter-stage-window.h			\
 	$(NULL)
 
