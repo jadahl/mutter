@@ -140,4 +140,6 @@ gboolean meta_backend_get_relative_motion_deltas (MetaBackend *backend,
 void meta_backend_set_client_pointer_constraint (MetaBackend *backend,
                                                  MetaPointerConstraint *constraint);
 
+gboolean meta_is_stage_views_enabled (void);
+
 #endif /* META_BACKEND_PRIVATE_H */
