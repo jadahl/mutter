@@ -29,8 +29,6 @@ struct _MetaCompositor
   GList                 *windows;
   Window                 output;
 
-  CoglFrameClosure      *frame_closure;
-
   /* Used for unredirecting fullscreen windows */
   guint                  disable_unredirect_count;
   MetaWindow            *unredirected_window;
