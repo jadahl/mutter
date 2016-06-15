@@ -2858,40 +2858,6 @@ clutter_texture_get_repeat (ClutterTexture *texture,
 }
 
 /**
- * clutter_texture_get_pixel_format:
- * @texture: a #ClutterTexture
- *
- * Retrieves the pixel format used by @texture. This is
- * equivalent to:
- *
- * |[
- *   handle = clutter_texture_get_pixel_format (texture);
- *
- *   if (handle != COGL_INVALID_HANDLE)
- *     format = cogl_texture_get_format (handle);
- * ]|
- *
- * Return value: a #CoglPixelFormat value
- *
- * Since: 1.0
- *
- * Deprecated: 1.12: There is no direct replacement for this function
- */
-CoglPixelFormat
-clutter_texture_get_pixel_format (ClutterTexture *texture)
-{
-  CoglHandle cogl_texture;
-
-  g_return_val_if_fail (CLUTTER_IS_TEXTURE (texture), COGL_PIXEL_FORMAT_ANY);
-
-  cogl_texture = clutter_texture_get_cogl_texture (texture);
-  if (cogl_texture == NULL)
-    return COGL_PIXEL_FORMAT_ANY;
-
-  return cogl_texture_get_format (cogl_texture);
-}
-
-/**
  * clutter_texture_set_keep_aspect_ratio:
  * @texture: a #ClutterTexture
  * @keep_aspect: %TRUE to maintain aspect ratio
