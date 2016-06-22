@@ -37,6 +37,7 @@ enum
   PROP_0,
 
   PROP_DEVICE_MANAGER,
+  PROP_DEVICE_TYPE,
 
   PROP_LAST
 };
@@ -46,6 +47,7 @@ static GParamSpec *obj_props[PROP_LAST];
 typedef struct _ClutterVirtualInputDevicePrivate
 {
   ClutterDeviceManager *manager;
+  ClutterInputDeviceType device_type;
 } ClutterVirtualInputDevicePrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE (ClutterVirtualInputDevice,
@@ -109,6 +111,15 @@ clutter_virtual_input_device_get_manager (ClutterVirtualInputDevice *virtual_dev
   return priv->manager;
 }
 
+int
+clutter_virtual_input_device_get_device_type (ClutterVirtualInputDevice *virtual_device)
+{
+  ClutterVirtualInputDevicePrivate *priv =
+    clutter_virtual_input_device_get_instance_private (virtual_device);
+
+  return priv->device_type;
+}
+
 static void
 clutter_virtual_input_device_get_property (GObject    *object,
                                            guint       prop_id,
@@ -125,6 +136,8 @@ clutter_virtual_input_device_get_property (GObject    *object,
     case PROP_DEVICE_MANAGER:
       g_value_set_object (value, priv->manager);
       break;
+    case PROP_DEVICE_TYPE:
+      g_value_set_int (value, priv->device_type);
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -147,6 +160,8 @@ clutter_virtual_input_device_set_property (GObject      *object,
     case PROP_DEVICE_MANAGER:
       priv->manager = g_value_get_object (value);
       break;
+    case PROP_DEVICE_TYPE:
+      priv->device_type = g_value_get_int (value);
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -172,6 +187,12 @@ clutter_virtual_input_device_class_init (ClutterVirtualInputDeviceClass *klass)
                          P_("The device manager instance"),
                          CLUTTER_TYPE_DEVICE_MANAGER,
                          CLUTTER_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY);
+  obj_props[PROP_DEVICE_TYPE] =
+    g_param_spec_int ("device-type",
+                      P_("Device type"),
+                      P_("Device type"),
+                      -1, G_MAXINT, -1,
+                      CLUTTER_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY);
 
   g_object_class_install_properties (object_class, PROP_LAST, obj_props);
 }
