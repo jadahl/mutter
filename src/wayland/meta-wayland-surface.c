@@ -126,6 +126,7 @@ G_DEFINE_TYPE (MetaWaylandSurfaceRoleDND,
 
 enum {
   SURFACE_DESTROY,
+  SURFACE_CONFIGURE,
   N_SURFACE_SIGNALS
 };
 
@@ -1591,6 +1592,8 @@ meta_wayland_surface_configure_notify (MetaWaylandSurface *surface,
   MetaWaylandSurfaceRoleShellSurface *shell_surface_role =
     META_WAYLAND_SURFACE_ROLE_SHELL_SURFACE (surface->role);
 
+  g_signal_emit (surface, SURFACE_CONFIGURE, 0);
+
   meta_wayland_surface_role_shell_surface_configure (shell_surface_role,
                                                      new_width, new_height,
                                                      sent_serial);
@@ -1782,6 +1785,13 @@ meta_wayland_surface_class_init (MetaWaylandSurfaceClass *klass)
                   G_SIGNAL_RUN_LAST,
                   0, NULL, NULL,
                   g_cclosure_marshal_VOID__VOID,
+                  G_TYPE_NONE, 0);
+
+  surface_signals[SURFACE_CONFIGURE] =
+    g_signal_new ("configure",
+                  G_TYPE_FROM_CLASS (object_class),
+                  G_SIGNAL_RUN_LAST,
+                  0, NULL, NULL, NULL,
                   G_TYPE_NONE, 0);
 }
 
