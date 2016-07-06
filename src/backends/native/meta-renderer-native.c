@@ -71,9 +71,6 @@ typedef struct _MetaOnscreenNative
   struct gbm_bo *next_bo;
   gboolean pending_swap_notify;
 
-  EGLSurface *pending_egl_surface;
-  struct gbm_surface *pending_surface;
-
   gboolean pending_set_crtc;
 
   MetaRendererView *view;
@@ -590,32 +587,9 @@ meta_onscreen_native_swap_buffers_with_damage (CoglOnscreen *onscreen,
   view = onscreen_native->view;
   clutter_stage_view_get_layout (CLUTTER_STAGE_VIEW (view), &view_layout);
 
-  if (onscreen_native->pending_egl_surface)
-    {
-      CoglFramebuffer *fb = COGL_FRAMEBUFFER (onscreen);
-
-      eglDestroySurface (egl_renderer->edpy, egl_onscreen->egl_surface);
-      egl_onscreen->egl_surface = onscreen_native->pending_egl_surface;
-      onscreen_native->pending_egl_surface = NULL;
-
-      _cogl_framebuffer_winsys_update_size (fb,
-                                            view_layout.width,
-                                            view_layout.height);
-      cogl_context->current_draw_buffer_changes |= COGL_FRAMEBUFFER_STATE_BIND;
-    }
-
   parent_vtable->onscreen_swap_buffers_with_damage (onscreen,
                                                     rectangles,
                                                     n_rectangles);
-
-  if (onscreen_native->pending_surface)
-    {
-      free_current_bo (onscreen);
-      if (onscreen_native->surface)
-        gbm_surface_destroy (onscreen_native->surface);
-      onscreen_native->surface = onscreen_native->pending_surface;
-      onscreen_native->pending_surface = NULL;
-    }
 
   /* Now we need to set the CRTC to whatever is the front buffer */
   onscreen_native->next_bo =
@@ -888,29 +862,26 @@ meta_renderer_native_set_legacy_view_size (MetaRendererNative *renderer_native,
                                                 error))
         return FALSE;
 
-
-      if (onscreen_native->pending_egl_surface)
-        eglDestroySurface (egl_renderer->edpy,
-                           onscreen_native->pending_egl_surface);
-      if (onscreen_native->pending_surface)
-        gbm_surface_destroy (onscreen_native->pending_surface);
-
-      /* If there's already a surface, wait until the next swap to switch
-       * it out, otherwise, if we're just starting up we can use the new
-       * surface right away.
+      /* Update the current surfaces so that when next time a frame is drawn,
+       * the new surface is used.
        */
-      if (onscreen_native->surface != NULL)
+      if (egl_onscreen->egl_surface)
         {
-          onscreen_native->pending_surface = new_surface;
-          onscreen_native->pending_egl_surface = new_egl_surface;
-        }
-      else
-        {
-          onscreen_native->surface = new_surface;
-          egl_onscreen->egl_surface = new_egl_surface;
+          CoglDisplayEGL *egl_display = cogl_display->winsys;
 
-          _cogl_framebuffer_winsys_update_size (framebuffer, width, height);
+          _cogl_winsys_egl_make_current (cogl_display,
+                                         egl_display->dummy_surface,
+                                         egl_display->dummy_surface,
+                                         egl_display->egl_context);
+          eglDestroySurface (egl_renderer->edpy,
+                             egl_onscreen->egl_surface);
+          gbm_surface_destroy (onscreen_native->surface);
         }
+
+      onscreen_native->surface = new_surface;
+      egl_onscreen->egl_surface = new_egl_surface;
+
+      _cogl_framebuffer_winsys_update_size (framebuffer, width, height);
     }
 
   meta_renderer_native_queue_modes_reset (renderer_native);
