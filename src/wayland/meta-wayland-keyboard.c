@@ -341,11 +341,15 @@ meta_wayland_keyboard_broadcast_modifiers (MetaWaylandKeyboard *keyboard)
   struct wl_resource *resource;
   struct wl_list *l;
 
-
   l = &keyboard->focus_resource_list;
   if (!wl_list_empty (l))
     {
-      uint32_t serial = wl_display_next_serial (keyboard->seat->wl_display);
+      MetaWaylandInputDevice *input_device =
+        META_WAYLAND_INPUT_DEVICE (keyboard);
+      MetaWaylandSeat *seat = meta_wayland_input_device_get_seat (input_device);
+      uint32_t serial;
+
+      serial = wl_display_next_serial (seat->wl_display);
 
       wl_resource_for_each (resource, l)
         keyboard_send_modifiers (keyboard, resource, serial);
@@ -481,12 +485,9 @@ static const MetaWaylandKeyboardGrabInterface default_keyboard_grab_interface = 
 };
 
 void
-meta_wayland_keyboard_enable (MetaWaylandKeyboard *keyboard,
-                              MetaWaylandSeat     *seat)
+meta_wayland_keyboard_enable (MetaWaylandKeyboard *keyboard)
 {
   MetaBackend *backend = meta_get_backend ();
-
-  keyboard->seat = seat;
 
   wl_list_init (&keyboard->resource_list);
   wl_list_init (&keyboard->focus_resource_list);
@@ -539,8 +540,6 @@ meta_wayland_keyboard_disable (MetaWaylandKeyboard *keyboard)
   /* XXX: What about keyboard->resource_list? */
 
   g_clear_object (&keyboard->settings);
-
-  keyboard->seat = NULL;
 }
 
 static guint
@@ -686,7 +685,10 @@ void
 meta_wayland_keyboard_set_focus (MetaWaylandKeyboard *keyboard,
                                  MetaWaylandSurface *surface)
 {
-  if (keyboard->seat == NULL)
+  MetaWaylandInputDevice *input_device = META_WAYLAND_INPUT_DEVICE (keyboard);
+  MetaWaylandSeat *seat = meta_wayland_input_device_get_seat (input_device);
+
+  if (!meta_wayland_seat_has_keyboard (seat))
     return;
 
   if (keyboard->focus_surface == surface)

@@ -83,8 +83,6 @@ struct _MetaWaylandKeyboard
 {
   MetaWaylandInputDevice parent;
 
-  MetaWaylandSeat *seat;
-
   struct wl_list resource_list;
   struct wl_list focus_resource_list;
 
@@ -102,8 +100,7 @@ struct _MetaWaylandKeyboard
   GSettings *settings;
 };
 
-void meta_wayland_keyboard_enable (MetaWaylandKeyboard *keyboard,
-                                   MetaWaylandSeat     *seat);
+void meta_wayland_keyboard_enable (MetaWaylandKeyboard *keyboard);
 
 void meta_wayland_keyboard_disable (MetaWaylandKeyboard *keyboard);
 
