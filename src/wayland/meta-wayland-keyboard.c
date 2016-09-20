@@ -835,10 +835,9 @@ meta_wayland_keyboard_set_focus (MetaWaylandKeyboard *keyboard,
 
   if (keyboard->focus_surface != NULL)
     {
-      struct wl_resource *resource;
-
       if (!wl_list_empty (&keyboard->focus_resource_list))
         {
+          struct wl_resource *resource;
           uint32_t serial;
 
           serial = meta_wayland_keyboard_next_serial (keyboard);
