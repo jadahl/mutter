@@ -423,11 +423,13 @@ default_grab_focus (MetaWaylandPointerGrab *grab,
                     MetaWaylandSurface     *surface)
 {
   MetaWaylandPointer *pointer = grab->pointer;
+  MetaWaylandSeat *seat = meta_wayland_pointer_get_seat (pointer);
 
   if (pointer->button_count > 0)
     return;
 
-  meta_wayland_pointer_set_focus (pointer, surface);
+  if (meta_wayland_seat_has_pointer (seat))
+    meta_wayland_pointer_set_focus (pointer, surface);
 }
 
 static void
@@ -799,11 +801,6 @@ void
 meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
                                 MetaWaylandSurface *surface)
 {
-  MetaWaylandSeat *seat = meta_wayland_pointer_get_seat (pointer);
-
-  if (!meta_wayland_seat_has_pointer (seat))
-    return;
-
   if (pointer->focus_surface == surface)
     return;
 
