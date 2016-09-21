@@ -611,9 +611,6 @@ meta_wayland_keyboard_enable (MetaWaylandKeyboard *keyboard)
   MetaBackend *backend = meta_get_backend ();
   GSettingsSchema *schema;
 
-  wl_list_init (&keyboard->resource_list);
-  wl_list_init (&keyboard->focus_resource_list);
-
   keyboard->settings = g_settings_new ("org.gnome.desktop.peripherals.keyboard");
   g_signal_connect (keyboard->settings, "changed",
                     G_CALLBACK (settings_changed), keyboard);
@@ -675,7 +672,10 @@ meta_wayland_keyboard_disable (MetaWaylandKeyboard *keyboard)
   meta_wayland_keyboard_set_focus (keyboard, NULL);
   meta_wayland_xkb_info_destroy (&keyboard->xkb_info);
 
-  /* XXX: What about keyboard->resource_list? */
+  wl_list_remove (&keyboard->resource_list);
+  wl_list_init (&keyboard->resource_list);
+  wl_list_remove (&keyboard->focus_resource_list);
+  wl_list_init (&keyboard->focus_resource_list);
 
   g_clear_object (&keyboard->settings);
   if (keyboard->gsd_settings)
@@ -964,6 +964,9 @@ meta_wayland_keyboard_end_grab (MetaWaylandKeyboard *keyboard)
 static void
 meta_wayland_keyboard_init (MetaWaylandKeyboard *keyboard)
 {
+  wl_list_init (&keyboard->resource_list);
+  wl_list_init (&keyboard->focus_resource_list);
+
   meta_wayland_xkb_info_init (&keyboard->xkb_info);
 
   keyboard->default_grab.interface = &default_keyboard_grab_interface;
