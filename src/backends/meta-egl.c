@@ -656,7 +656,7 @@ meta_egl_stream_consumer_output (MetaEgl          *egl,
   return TRUE;
 }
 
-gboolean
+EGLint
 meta_egl_stream_consumer_acquire_attrib (MetaEgl     *egl,
                                          EGLDisplay   display,
                                          EGLStreamKHR stream,
@@ -664,15 +664,16 @@ meta_egl_stream_consumer_acquire_attrib (MetaEgl     *egl,
                                          GError     **error)
 {
   if (!is_egl_proc_valid (egl->eglStreamConsumerAcquireAttribNV, error))
-    return FALSE;
+    return EGL_NOT_INITIALIZED;
 
   if (!egl->eglStreamConsumerAcquireAttribNV (display, stream, attrib_list))
     {
-      set_egl_error (error);
-      return FALSE;
+      EGLint error_number = eglGetError();
+      set_egl_error_number (error_number, error);
+      return error_number;
     }
 
-  return TRUE;
+  return EGL_SUCCESS;
 }
 
 gboolean
