@@ -137,6 +137,8 @@ get_egl_error_str (void)
       break;
     case EGL_BAD_OUTPUT_LAYER_EXT:
       return "An EGLOutputLayerEXT argument does not name a valid EGL output layer.";
+    case EGL_RESOURCE_BUSY_EXT:
+      return "The operation could not be completed on the requested resource because it is temporary unavailable.";
     default:
       return "Unknown error";
       break;
