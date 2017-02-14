@@ -73,12 +73,8 @@ struct _MetaEgl
 G_DEFINE_TYPE (MetaEgl, meta_egl, G_TYPE_OBJECT)
 
 static const char *
-get_egl_error_str (void)
+get_egl_error_str (EGLint error_number)
 {
-  EGLint error_number;
-
-  error_number = eglGetError ();
-
   switch (error_number)
     {
     case EGL_SUCCESS:
@@ -126,6 +122,19 @@ get_egl_error_str (void)
     case EGL_CONTEXT_LOST:
       return "A power management event has occurred. The application must destroy all contexts and reinitialise OpenGL ES state and objects to continue rendering. ";
       break;
+    case EGL_BAD_STREAM_KHR:
+      return "An EGLStreamKHR argument does not name a valid EGL stream.";
+      break;
+    case EGL_BAD_STATE_KHR:
+      return "An EGLStreamKHR argument is not in a valid state";
+      break;
+    case EGL_BAD_DEVICE_EXT:
+      return "An EGLDeviceEXT argument does not name a valid EGL device.";
+      break;
+    case EGL_BAD_OUTPUT_LAYER_EXT:
+      return "An EGLOutputLayerEXT argument does not name a valid EGL output layer.";
+    case EGL_RESOURCE_BUSY_EXT:
+      return "The operation could not be completed on the requested resource because it is temporary unavailable.";
     default:
       return "Unknown error";
       break;
@@ -133,18 +142,21 @@ get_egl_error_str (void)
 }
 
 static void
-set_egl_error (GError **error)
+set_egl_error_number (EGLint error_number, GError **error)
 {
   const char *error_str;
 
   if (!error)
     return;
 
-  error_str = get_egl_error_str ();
+  error_str = get_egl_error_str (error_number);
   g_set_error (error, G_IO_ERROR,
                G_IO_ERROR_FAILED,
                error_str);
 }
+
+#define set_egl_error(gerror) \
+  set_egl_error_number(eglGetError(), gerror)
 
 static gboolean
 extensions_string_has_extensions_valist (const char *extensions_str,
@@ -202,7 +214,7 @@ meta_egl_has_extensions (MetaEgl   *egl,
   extensions_str = (const char *) eglQueryString (display, EGL_EXTENSIONS);
   if (!extensions_str)
     {
-      g_warning ("Failed to query string: %s", get_egl_error_str ());
+      g_warning ("Failed to query string: %s", get_egl_error_str (eglGetError()));
       return FALSE;
     }
 
@@ -644,7 +656,7 @@ meta_egl_stream_consumer_output (MetaEgl          *egl,
   return TRUE;
 }
 
-gboolean
+EGLint
 meta_egl_stream_consumer_acquire_attrib (MetaEgl     *egl,
                                          EGLDisplay   display,
                                          EGLStreamKHR stream,
@@ -652,15 +664,16 @@ meta_egl_stream_consumer_acquire_attrib (MetaEgl     *egl,
                                          GError     **error)
 {
   if (!is_egl_proc_valid (egl->eglStreamConsumerAcquireAttribNV, error))
-    return FALSE;
+    return EGL_NOT_INITIALIZED;
 
   if (!egl->eglStreamConsumerAcquireAttribNV (display, stream, attrib_list))
     {
-      set_egl_error (error);
-      return FALSE;
+      EGLint error_number = eglGetError();
+      set_egl_error_number (error_number, error);
+      return error_number;
     }
 
-  return TRUE;
+  return EGL_SUCCESS;
 }
 
 gboolean
