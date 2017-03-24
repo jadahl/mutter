@@ -1146,6 +1146,19 @@ meta_monitors_config_class_init (MetaMonitorsConfigClass *klass)
   object_class->finalize = meta_monitors_config_finalize;
 }
 
+void
+meta_crtc_info_free (MetaCrtcInfo *info)
+{
+  g_ptr_array_free (info->outputs, TRUE);
+  g_slice_free (MetaCrtcInfo, info);
+}
+
+void
+meta_output_info_free (MetaOutputInfo *info)
+{
+  g_slice_free (MetaOutputInfo, info);
+}
+
 gboolean
 meta_verify_monitor_mode_spec (MetaMonitorModeSpec *monitor_mode_spec,
                                GError             **error)
