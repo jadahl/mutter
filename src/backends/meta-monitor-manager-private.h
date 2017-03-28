@@ -172,9 +172,7 @@ struct _MetaMonitorManager
   */
   GList *outputs;
   GList *crtcs;
-
-  MetaCrtcMode *modes;
-  unsigned int n_modes;
+  GList *modes;
 
   GList *monitors;
 
