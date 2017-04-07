@@ -322,6 +322,8 @@ CoglFramebuffer *               _clutter_actor_get_active_framebuffer           
 ClutterPaintNode *              clutter_actor_create_texture_paint_node                 (ClutterActor *self,
                                                                                          CoglTexture  *texture);
 
+void                            _clutter_actor_update_resource_scales                   (ClutterActor *self);
+
 G_END_DECLS
 
 #endif /* __CLUTTER_ACTOR_PRIVATE_H__ */

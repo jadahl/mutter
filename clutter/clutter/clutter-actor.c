@@ -1003,6 +1003,7 @@ enum
   TRANSITIONS_COMPLETED,
   TOUCH_EVENT,
   TRANSITION_STOPPED,
+  SYNC_RESOURCE_SCALE,
 
   LAST_SIGNAL
 };
@@ -8485,6 +8486,22 @@ clutter_actor_class_init (ClutterActorClass *klass)
 		  _clutter_marshal_BOOLEAN__BOXED,
 		  G_TYPE_BOOLEAN, 1,
 		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
+
+  /**
+   * ClutterActor::sync-resource-scale:
+   * @actor: a #ClutterActor
+   *
+   * The ::sync-resource-scale signal is emitted when the paint scale (see
+   * clutter_actor_get_resource_scale()) might have changed.
+   */
+  actor_signals[SYNC_RESOURCE_SCALE] =
+    g_signal_new (I_("sync-resource-scale"),
+                  G_TYPE_FROM_CLASS (object_class),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterActorClass, sync_resource_scale),
+                  NULL, NULL,
+                  _clutter_marshal_VOID__VOID,
+                  G_TYPE_NONE, 0);
 }
 
 static void
@@ -17645,6 +17662,124 @@ clutter_actor_get_paint_box (ClutterActor    *self,
     return FALSE;
 
   _clutter_paint_volume_get_stage_paint_box (pv, CLUTTER_STAGE (stage), box);
+
+  return TRUE;
+}
+
+static void
+init_rect_from_cairo_rect (ClutterRect           *rect,
+                           cairo_rectangle_int_t *cairo_rect)
+{
+  *rect = (ClutterRect) {
+    .origin = {
+      .x = cairo_rect->x,
+      .y = cairo_rect->y
+    },
+    .size = {
+      .width = cairo_rect->width,
+      .height = cairo_rect->height
+    }
+  };
+}
+
+static gboolean
+_clutter_actor_calculate_resource_scale (ClutterActor *self,
+                                         ClutterRect  *bounding_rect,
+                                         gfloat       *resource_scale)
+{
+  ClutterActor *stage;
+  GList *views;
+  GList *l;
+  int max_scale = 0;
+
+  stage = _clutter_actor_get_stage_internal (self);
+  if (!stage)
+    return FALSE;
+
+  if (bounding_rect->size.width == 0.0 || bounding_rect->size.height == 0)
+    return FALSE;
+
+  views = _clutter_stage_peek_stage_views (CLUTTER_STAGE (stage));
+  for (l = views; l; l = l->next)
+    {
+      ClutterStageView *view = l->data;
+      cairo_rectangle_int_t view_layout;
+      ClutterRect view_rect;
+
+      clutter_stage_view_get_layout (view, &view_layout);
+      init_rect_from_cairo_rect (&view_rect, &view_layout);
+
+      if (clutter_rect_intersection (&view_rect, bounding_rect, NULL))
+        max_scale = MAX (clutter_stage_view_get_scale (view), max_scale);
+    }
+
+
+  if (max_scale == 0)
+    return FALSE;
+
+  *resource_scale = max_scale;
+
+  return TRUE;
+}
+
+void
+_clutter_actor_update_resource_scales (ClutterActor *self)
+{
+  ClutterActor *child;
+
+  g_signal_emit (self, actor_signals[SYNC_RESOURCE_SCALE], 0);
+
+  for (child = clutter_actor_get_first_child (self);
+       child != NULL;
+       child = clutter_actor_get_next_sibling (child))
+    _clutter_actor_update_resource_scales (child);
+}
+
+/**
+ * clutter_actor_get_resource_scale:
+ * @self: A #ClutterActor
+ * @resource_scale: (out): return location for the resource scale
+ *
+ * Retrieves the resource scale for this actor, if available.
+ *
+ * The resource scale refers to the scale the actor should use for its resources.
+ * For example if an actor draws a a picture of size 100 x 100 in the stage
+ * coordinate space, it should use a texture of twice the size (i.e. 200 x 200)
+ * if the resource scale is 2.
+ *
+ * The resource scale is determined by the calculating the highest
+ * ClutterStageView scale the actor will get painted on.
+ */
+gboolean
+clutter_actor_get_resource_scale (ClutterActor *self,
+                                  gfloat       *resource_scale)
+{
+  ClutterActorPrivate *priv;
+  ClutterRect bounding_rect;
+
+  g_return_val_if_fail (CLUTTER_IS_ACTOR (self), FALSE);
+
+  priv = self->priv;
+
+  if (!clutter_actor_is_mapped (self))
+    return FALSE;
+
+  clutter_actor_get_transformed_position (self,
+                                          &bounding_rect.origin.x,
+                                          &bounding_rect.origin.y);
+  clutter_actor_get_transformed_size (self,
+                                      &bounding_rect.size.width,
+                                      &bounding_rect.size.height);
+
+  if (!_clutter_actor_calculate_resource_scale (self,
+                                                &bounding_rect,
+                                                resource_scale))
+    {
+      if (priv->parent)
+        return clutter_actor_get_resource_scale (priv->parent, resource_scale);
+      else
+        return FALSE;
+    }
 
   return TRUE;
 }
