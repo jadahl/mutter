@@ -4900,3 +4900,17 @@ clutter_stage_capture_into (ClutterStage          *stage,
   view = get_view_at_rect (stage, rect);
   capture_view_into (stage, paint, view, rect, data, rect->width * bpp);
 }
+
+GList *
+_clutter_stage_peek_stage_views (ClutterStage *stage)
+{
+  ClutterStagePrivate *priv = stage->priv;
+
+  return _clutter_stage_window_get_views (priv->impl);
+}
+
+void
+clutter_stage_update_resource_scales (ClutterStage *stage)
+{
+  _clutter_actor_update_resource_scales (CLUTTER_ACTOR (stage));
+}
