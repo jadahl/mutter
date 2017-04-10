@@ -40,6 +40,7 @@
 #include "meta-idle-monitor-xsync.h"
 #include "backends/meta-stage.h"
 #include "backends/x11/meta-clutter-backend-x11.h"
+#include "backends/x11/meta-input-settings-x11.h"
 #include "backends/x11/meta-renderer-x11.h"
 #include "meta/meta-cursor-tracker.h"
 
@@ -451,6 +452,12 @@ meta_backend_x11_create_idle_monitor (MetaBackend *backend,
                        NULL);
 }
 
+static MetaInputSettings *
+meta_backend_x11_create_input_settings (MetaBackend *backend)
+{
+  return g_object_new (META_TYPE_INPUT_SETTINGS_X11, NULL);
+}
+
 static gboolean
 meta_backend_x11_grab_device (MetaBackend *backend,
                               int          device_id,
@@ -594,6 +601,7 @@ meta_backend_x11_class_init (MetaBackendX11Class *klass)
   backend_class->create_clutter_backend = meta_backend_x11_create_clutter_backend;
   backend_class->post_init = meta_backend_x11_post_init;
   backend_class->create_idle_monitor = meta_backend_x11_create_idle_monitor;
+  backend_class->create_input_settings = meta_backend_x11_create_input_settings;
   backend_class->grab_device = meta_backend_x11_grab_device;
   backend_class->ungrab_device = meta_backend_x11_ungrab_device;
   backend_class->warp_pointer = meta_backend_x11_warp_pointer;
