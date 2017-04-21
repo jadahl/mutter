@@ -25,6 +25,7 @@
 
 #include "backends/meta-backend-private.h"
 #include "backends/meta-monitor-manager-private.h"
+#include "backends/meta-settings-private.h"
 
 typedef struct _MetaMonitorMode
 {
