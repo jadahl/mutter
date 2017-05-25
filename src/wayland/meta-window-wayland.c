@@ -400,7 +400,7 @@ meta_window_wayland_update_main_monitor (MetaWindow *window)
   /* To avoid a window alternating between two main monitors because scaling
    * changes the main monitor, wait until both the current and the new scale
    * will result in the same main monitor. */
-  scale = (float)to->scale / from->scale;
+  scale = to->scale / from->scale;
   rect = window->rect;
   scale_rect_size (&rect, scale);
   scaled_new =

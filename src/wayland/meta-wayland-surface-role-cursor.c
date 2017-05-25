@@ -115,7 +115,7 @@ cursor_sprite_prepare_at (MetaCursorSprite             *cursor_sprite,
           if (meta_is_stage_views_scaled ())
             texture_scale = 1.0 / surface->scale;
           else
-            texture_scale = (float) logical_monitor->scale / surface->scale;
+            texture_scale = logical_monitor->scale / surface->scale;
 
           meta_cursor_sprite_set_texture_scale (cursor_sprite, texture_scale);
         }
