@@ -76,8 +76,8 @@ gboolean meta_wayland_tablet_tool_handle_event        (MetaWaylandTabletTool  *t
                                                        const ClutterEvent     *event);
 
 void     meta_wayland_tablet_tool_set_cursor_position (MetaWaylandTabletTool  *tool,
-                                                       int                     new_x,
-                                                       int                     new_y);
+                                                       float                   new_x,
+                                                       float                   new_y);
 
 
 #endif /* META_WAYLAND_TABLET_TOOL_H */
