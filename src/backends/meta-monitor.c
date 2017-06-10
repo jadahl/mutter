@@ -1388,7 +1388,8 @@ meta_monitor_calculate_crtc_pos (MetaMonitor         *monitor,
 
 static float
 calculate_scale (MetaMonitor     *monitor,
-                 MetaMonitorMode *monitor_mode)
+                 MetaMonitorMode *monitor_mode,
+                 MetaMonitorScalesConstraint constraints)
 {
   int resolution_width, resolution_height;
   int width_mm, height_mm;
@@ -1448,7 +1449,8 @@ out:
 
 float
 meta_monitor_calculate_mode_scale (MetaMonitor     *monitor,
-                                   MetaMonitorMode *monitor_mode)
+                                   MetaMonitorMode *monitor_mode,
+                                   MetaMonitorScalesConstraint constraints)
 {
   MetaBackend *backend = meta_get_backend ();
   MetaSettings *settings = meta_backend_get_settings (backend);
@@ -1458,7 +1460,7 @@ meta_monitor_calculate_mode_scale (MetaMonitor     *monitor,
                                                &global_scaling_factor))
     return global_scaling_factor;
 
-  return calculate_scale (monitor, monitor_mode);
+  return calculate_scale (monitor, monitor_mode, constraints);
 }
 
 static float
