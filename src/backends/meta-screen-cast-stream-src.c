@@ -51,6 +51,15 @@ enum
   PROP_STREAM_ID,
 };
 
+enum
+{
+  CLOSED,
+
+  N_SIGNALS
+};
+
+static guint signals[N_SIGNALS];
+
 typedef struct _MetaSpaType
 {
   uint32_t format;
@@ -80,6 +89,7 @@ typedef struct _MetaScreenCastStreamSrcPrivate
   struct pw_listener on_state_changed_listener;
 
   struct pw_stream *pipewire_stream;
+  struct pw_listener on_stream_state_changed_listener;
   struct pw_listener on_stream_format_changed_listener;
 
   MetaSpaType spa_type;
@@ -185,6 +195,39 @@ meta_screen_cast_stream_src_maybe_record_frame (MetaScreenCastStreamSrc *src)
     munmap (map, buffer->datas[0].maxsize);
 
   pw_stream_send_buffer (priv->pipewire_stream, buffer_id);
+}
+
+static void
+meta_screen_cast_stream_src_notify_closed (MetaScreenCastStreamSrc *src)
+{
+  g_signal_emit (src, signals[CLOSED], 0);
+}
+
+static void
+on_stream_state_changed (struct pw_listener *listener,
+                         struct pw_stream   *stream)
+{
+  MetaScreenCastStreamSrc *src =
+    PRIVATE_OWNER_FROM_FIELD (MetaScreenCastStreamSrc,
+                              listener,
+                              on_stream_state_changed_listener);
+  MetaScreenCastStreamSrcPrivate *priv =
+    meta_screen_cast_stream_src_get_instance_private (src);
+
+  switch (stream->state)
+    {
+    case PW_STREAM_STATE_ERROR:
+      g_warning ("pipewire stream error: %s", priv->pipewire_stream->error);
+      meta_screen_cast_stream_src_notify_closed (src);
+      break;
+    case PW_STREAM_STATE_UNCONNECTED:
+    case PW_STREAM_STATE_CONNECTING:
+    case PW_STREAM_STATE_CONFIGURE:
+    case PW_STREAM_STATE_READY:
+    case PW_STREAM_STATE_PAUSED:
+    case PW_STREAM_STATE_STREAMING:
+      break;
+    }
 }
 
 static void
@@ -299,6 +342,9 @@ create_pipewire_stream (MetaScreenCastStreamSrc *src,
                                      frame_rate_fraction.denom));
   format = SPA_POD_BUILDER_DEREF (&pod_builder, format_frame.ref, struct spa_format);
 
+  pw_signal_add (&pipewire_stream->state_changed,
+                 &priv->on_stream_state_changed_listener,
+                 on_stream_state_changed);
   pw_signal_add (&pipewire_stream->format_changed,
                  &priv->on_stream_format_changed_listener,
                  on_stream_format_changed);
@@ -335,6 +381,7 @@ on_state_changed (struct pw_listener *listener,
     {
     case PW_CONTEXT_STATE_ERROR:
       g_warning ("pipewire context error: %s\n", pipewire_context->error);
+      meta_screen_cast_stream_src_notify_closed (src);
       break;
     case PW_CONTEXT_STATE_CONNECTED:
       pipewire_stream = create_pipewire_stream (src, &error);
@@ -342,6 +389,7 @@ on_state_changed (struct pw_listener *listener,
         {
           g_warning ("Could not create pipewire stream: %s", error->message);
           g_error_free (error);
+          meta_screen_cast_stream_src_notify_closed (src);
         }
       else
         {
@@ -568,4 +616,11 @@ meta_screen_cast_stream_src_class_init (MetaScreenCastStreamSrcClass *klass)
                                                         G_PARAM_READWRITE |
                                                         G_PARAM_CONSTRUCT_ONLY |
                                                         G_PARAM_STATIC_STRINGS));
+
+  signals[CLOSED] = g_signal_new ("closed",
+                                  G_TYPE_FROM_CLASS (klass),
+                                  G_SIGNAL_RUN_LAST,
+                                  0,
+                                  NULL, NULL, NULL,
+                                  G_TYPE_NONE, 0);
 }
