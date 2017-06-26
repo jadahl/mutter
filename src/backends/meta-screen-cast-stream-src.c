@@ -88,6 +88,8 @@ typedef struct _MetaScreenCastStreamSrcPrivate
   MetaPipeWireSource *pipewire_source;
   struct pw_listener on_state_changed_listener;
 
+  gboolean is_enabled;
+
   struct pw_stream *pipewire_stream;
   struct pw_listener on_stream_state_changed_listener;
   struct pw_listener on_stream_format_changed_listener;
@@ -197,6 +199,37 @@ meta_screen_cast_stream_src_maybe_record_frame (MetaScreenCastStreamSrc *src)
   pw_stream_send_buffer (priv->pipewire_stream, buffer_id);
 }
 
+static gboolean
+meta_screen_cast_stream_src_is_enabled (MetaScreenCastStreamSrc *src)
+{
+  MetaScreenCastStreamSrcPrivate *priv =
+    meta_screen_cast_stream_src_get_instance_private (src);
+
+  return priv->is_enabled;
+}
+
+static void
+meta_screen_cast_stream_src_enable (MetaScreenCastStreamSrc *src)
+{
+  MetaScreenCastStreamSrcPrivate *priv =
+    meta_screen_cast_stream_src_get_instance_private (src);
+
+  META_SCREEN_CAST_STREAM_SRC_GET_CLASS (src)->enable (src);
+
+  priv->is_enabled = TRUE;
+}
+
+static void
+meta_screen_cast_stream_src_disable (MetaScreenCastStreamSrc *src)
+{
+  MetaScreenCastStreamSrcPrivate *priv =
+    meta_screen_cast_stream_src_get_instance_private (src);
+
+  META_SCREEN_CAST_STREAM_SRC_GET_CLASS (src)->disable (src);
+
+  priv->is_enabled = FALSE;
+}
+
 static void
 meta_screen_cast_stream_src_notify_closed (MetaScreenCastStreamSrc *src)
 {
@@ -225,7 +258,12 @@ on_stream_state_changed (struct pw_listener *listener,
     case PW_STREAM_STATE_CONFIGURE:
     case PW_STREAM_STATE_READY:
     case PW_STREAM_STATE_PAUSED:
+      if (meta_screen_cast_stream_src_is_enabled (src))
+        meta_screen_cast_stream_src_disable (src);
+      break;
     case PW_STREAM_STATE_STREAMING:
+      if (!meta_screen_cast_stream_src_is_enabled (src))
+        meta_screen_cast_stream_src_enable (src);
       break;
     }
 }
@@ -529,6 +567,9 @@ meta_screen_cast_stream_src_finalize (GObject *object)
   MetaScreenCastStreamSrc *src = META_SCREEN_CAST_STREAM_SRC (object);
   MetaScreenCastStreamSrcPrivate *priv =
     meta_screen_cast_stream_src_get_instance_private (src);
+
+  if (meta_screen_cast_stream_src_is_enabled (src))
+    meta_screen_cast_stream_src_disable (src);
 
   g_clear_pointer (&priv->pipewire_stream, (GDestroyNotify) pw_stream_destroy);
   pw_context_destroy (priv->pipewire_context);
