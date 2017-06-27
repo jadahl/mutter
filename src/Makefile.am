@@ -82,6 +82,7 @@ mutter_built_sources += \
 	linux-dmabuf-unstable-v1-server-protocol.h				\
 	keyboard-shortcuts-inhibit-unstable-v1-protocol.c		\
 	keyboard-shortcuts-inhibit-unstable-v1-server-protocol.h	\
+	wayland-eglstream-controller-server-protocol.h			\
 	$(NULL)
 endif
 
