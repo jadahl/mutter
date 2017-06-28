@@ -11,7 +11,7 @@
 
     <!--
 	CreateSession:
-	@session: Path to the new session object
+	@session_path: Path to the new session object
     -->
     <method name="CreateSession">
       <arg name="session_path" type="o" direction="out" />

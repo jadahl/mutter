@@ -6,15 +6,13 @@
   <!--
       org.gnome.Mutter.ScreenCast:
       @short_description: Screen cast interface
-
-      Available @properties (see RecordMonitor and RecordWindow)
   -->
   <interface name="org.gnome.Mutter.ScreenCast">
 
     <!--
 	CreateSession:
 	@properties: Properties
-	@session: Path to the new session object
+	@session_path: Path to the new session object
 
 	* "remote-desktop-session-id" (s): The ID of a remote desktop session.
 					   Remote desktop driven screen casts
@@ -55,7 +53,7 @@
 	RecordMonitor:
 	@connector: Connector of the monitor to record
 	@properties: Properties
-	@session: Path to the new session object
+	@stream_path: Path to the new stream object
 
 	Record a single monitor.
 
@@ -69,10 +67,10 @@
 
     <!--
 	RecordWindow:
-	@properties: Properties
-	@session: Path to the new session object
+	@properties: Properties used determining what window to select
+	@stream_path: Path to the new stream object
 
-	Record a single monitor.
+	Record a single window.
 
 	Available @properties include: (none)
     -->
