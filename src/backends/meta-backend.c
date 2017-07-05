@@ -569,6 +569,13 @@ experimental_features_changed (MetaSettings           *settings,
 #endif /* HAVE_REMOTE_DESKTOP */
 }
 
+static MetaRenderer *
+meta_backend_create_renderer (MetaBackend *backend,
+                              GError     **error)
+{
+  return META_BACKEND_GET_CLASS (backend)->create_renderer (backend, error);
+}
+
 static gboolean
 meta_backend_initable_init (GInitable     *initable,
                             GCancellable  *cancellable,
@@ -584,14 +591,9 @@ meta_backend_initable_init (GInitable     *initable,
 
   priv->egl = g_object_new (META_TYPE_EGL, NULL);
 
-  priv->renderer = META_BACKEND_GET_CLASS (backend)->create_renderer (backend);
+  priv->renderer = meta_backend_create_renderer (backend, error);
   if (!priv->renderer)
-    {
-      g_set_error (error, G_IO_ERROR,
-                   G_IO_ERROR_FAILED,
-                   "Failed to create MetaRenderer");
-      return FALSE;
-    }
+    return FALSE;
 
   priv->cursor_tracker = g_object_new (META_TYPE_CURSOR_TRACKER, NULL);
 
