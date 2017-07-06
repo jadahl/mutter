@@ -67,11 +67,12 @@ enum
 {
   PROP_0,
 
-  PROP_KMS_FD,
-  PROP_KMS_FILE_PATH,
+  PROP_MONITOR_MANAGER,
 
   PROP_LAST
 };
+
+static GParamSpec *obj_props[PROP_LAST];
 
 typedef struct _MetaOnscreenNative
 {
@@ -112,8 +113,7 @@ struct _MetaRendererNative
 {
   MetaRenderer parent;
 
-  int kms_fd;
-  char *kms_file_path;
+  MetaMonitorManagerKms *monitor_manager_kms;
 
   MetaRendererNativeMode mode;
 
@@ -223,11 +223,15 @@ free_current_bo (CoglOnscreen *onscreen)
   CoglRenderer *cogl_renderer = cogl_context->display->renderer;
   CoglRendererEGL *egl_renderer = cogl_renderer->winsys;
   MetaRendererNative *renderer_native = egl_renderer->platform;
+  MetaMonitorManagerKms *monitor_manager_kms =
+    renderer_native->monitor_manager_kms;
+  int kms_fd;
+
+  kms_fd = meta_monitor_manager_kms_get_fd (monitor_manager_kms);
 
   if (onscreen_native->gbm.current_fb_id)
     {
-      drmModeRmFB (renderer_native->kms_fd,
-                   onscreen_native->gbm.current_fb_id);
+      drmModeRmFB (kms_fd, onscreen_native->gbm.current_fb_id);
       onscreen_native->gbm.current_fb_id = 0;
     }
   if (onscreen_native->gbm.current_bo)
@@ -498,7 +502,12 @@ flip_closure_destroyed (MetaRendererView *view)
     case META_RENDERER_NATIVE_MODE_GBM:
       if (onscreen_native->gbm.next_fb_id)
         {
-          drmModeRmFB (renderer_native->kms_fd, onscreen_native->gbm.next_fb_id);
+          MetaMonitorManagerKms *monitor_manager_kms =
+            renderer_native->monitor_manager_kms;
+          int kms_fd;
+
+          kms_fd = meta_monitor_manager_kms_get_fd (monitor_manager_kms);
+          drmModeRmFB (kms_fd, onscreen_native->gbm.next_fb_id);
           gbm_surface_release_buffer (onscreen_native->gbm.surface,
                                       onscreen_native->gbm.next_bo);
           onscreen_native->gbm.next_bo = NULL;
@@ -580,10 +589,8 @@ meta_onscreen_native_flip_crtc (MetaOnscreenNative *onscreen_native,
   MetaBackend *backend = meta_get_backend ();
   MetaRenderer *renderer = meta_backend_get_renderer (backend);
   MetaRendererNative *renderer_native = META_RENDERER_NATIVE (renderer);
-  MetaMonitorManager *monitor_manager =
-    meta_backend_get_monitor_manager (backend);
   MetaMonitorManagerKms *monitor_manager_kms =
-    META_MONITOR_MANAGER_KMS (monitor_manager);
+    renderer_native->monitor_manager_kms;
 
   if (!meta_monitor_manager_kms_is_crtc_active (monitor_manager_kms,
                                                 crtc))
@@ -617,7 +624,7 @@ meta_onscreen_native_flip_crtc (MetaOnscreenNative *onscreen_native,
 
 typedef struct _SetCrtcFbData
 {
-  MetaMonitorManager *monitor_manager;
+  MetaMonitorManagerKms *monitor_manager_kms;
   MetaLogicalMonitor *logical_monitor;
   uint32_t fb_id;
 } SetCrtcFbData;
@@ -628,8 +635,7 @@ set_crtc_fb (MetaLogicalMonitor *logical_monitor,
              gpointer            user_data)
 {
   SetCrtcFbData *data = user_data;
-  MetaMonitorManagerKms *monitor_manager_kms =
-    META_MONITOR_MANAGER_KMS (data->monitor_manager);
+  MetaMonitorManagerKms *monitor_manager_kms = data->monitor_manager_kms;
   int x, y;
 
   x = crtc->rect.x - logical_monitor->rect.x;
@@ -647,10 +653,8 @@ meta_onscreen_native_set_crtc_modes (MetaOnscreenNative *onscreen_native)
   MetaBackend *backend = meta_get_backend ();
   MetaRenderer *renderer = meta_backend_get_renderer (backend);
   MetaRendererNative *renderer_native = META_RENDERER_NATIVE (renderer);
-  MetaMonitorManager *monitor_manager =
-    meta_backend_get_monitor_manager (backend);
   MetaMonitorManagerKms *monitor_manager_kms =
-    META_MONITOR_MANAGER_KMS (monitor_manager);
+    renderer_native->monitor_manager_kms;
   MetaRendererView *view = onscreen_native->view;
   uint32_t fb_id = 0;
   MetaLogicalMonitor *logical_monitor;
@@ -673,8 +677,8 @@ meta_onscreen_native_set_crtc_modes (MetaOnscreenNative *onscreen_native)
   if (logical_monitor)
     {
       SetCrtcFbData data = {
-          .monitor_manager = monitor_manager,
-          .fb_id = fb_id
+        .monitor_manager_kms = monitor_manager_kms,
+        .fb_id = fb_id
       };
 
       meta_logical_monitor_foreach_crtc (logical_monitor,
@@ -683,6 +687,8 @@ meta_onscreen_native_set_crtc_modes (MetaOnscreenNative *onscreen_native)
     }
   else
     {
+      MetaMonitorManager *monitor_manager =
+        META_MONITOR_MANAGER (monitor_manager_kms);
       GList *crtcs;
       GList *l;
 
@@ -729,10 +735,13 @@ meta_onscreen_native_flip_crtcs (CoglOnscreen *onscreen)
 {
   CoglOnscreenEGL *egl_onscreen = onscreen->winsys;
   MetaOnscreenNative *onscreen_native = egl_onscreen->platform;
-  MetaBackend *backend = meta_get_backend ();
-  MetaMonitorManager *monitor_manager =
-    meta_backend_get_monitor_manager (backend);
   MetaRendererView *view = onscreen_native->view;
+  CoglFramebuffer *framebuffer = COGL_FRAMEBUFFER (onscreen);
+  CoglContext *cogl_context = framebuffer->context;
+  CoglDisplay *cogl_display = cogl_context->display;
+  CoglRenderer *cogl_renderer = cogl_display->renderer;
+  CoglRendererEGL *egl_renderer = cogl_renderer->winsys;
+  MetaRendererNative *renderer_native = egl_renderer->platform;
   GClosure *flip_closure;
   MetaLogicalMonitor *logical_monitor;
   gboolean fb_in_use = FALSE;
@@ -770,6 +779,8 @@ meta_onscreen_native_flip_crtcs (CoglOnscreen *onscreen)
     }
   else
     {
+      MetaMonitorManager *monitor_manager =
+        META_MONITOR_MANAGER (renderer_native->monitor_manager_kms);
       GList *crtcs;
       GList *l;
 
@@ -792,9 +803,6 @@ meta_onscreen_native_flip_crtcs (CoglOnscreen *onscreen)
    */
   if (fb_in_use && onscreen_native->pending_flips == 0)
     {
-      MetaRenderer *renderer = meta_backend_get_renderer (backend);
-      MetaRendererNative *renderer_native = META_RENDERER_NATIVE (renderer);
-
       switch (renderer_native->mode)
         {
         case META_RENDERER_NATIVE_MODE_GBM:
@@ -823,9 +831,12 @@ gbm_get_next_fb_id (CoglOnscreen   *onscreen,
   MetaRendererNative *renderer_native = egl_renderer->platform;
   CoglOnscreenEGL *egl_onscreen = onscreen->winsys;
   MetaOnscreenNative *onscreen_native = egl_onscreen->platform;
+  MetaMonitorManagerKms *monitor_manager_kms =
+    renderer_native->monitor_manager_kms;
   uint32_t handle, stride;
   struct gbm_bo *next_bo;
   uint32_t next_fb_id;
+  int kms_fd;
 
   /* Now we need to set the CRTC to whatever is the front buffer */
   next_bo = gbm_surface_lock_front_buffer (onscreen_native->gbm.surface);
@@ -833,7 +844,9 @@ gbm_get_next_fb_id (CoglOnscreen   *onscreen,
   stride = gbm_bo_get_stride (next_bo);
   handle = gbm_bo_get_handle (next_bo).u32;
 
-  if (drmModeAddFB (renderer_native->kms_fd,
+  kms_fd = meta_monitor_manager_kms_get_fd (monitor_manager_kms);
+
+  if (drmModeAddFB (kms_fd,
                     cogl_framebuffer_get_width (COGL_FRAMEBUFFER (onscreen)),
                     cogl_framebuffer_get_height (COGL_FRAMEBUFFER (onscreen)),
                     24, /* depth */
@@ -863,11 +876,8 @@ meta_onscreen_native_swap_buffers_with_damage (CoglOnscreen *onscreen,
   MetaRendererNative *renderer_native = egl_renderer->platform;
   CoglOnscreenEGL *egl_onscreen = onscreen->winsys;
   MetaOnscreenNative *onscreen_native = egl_onscreen->platform;
-  MetaBackend *backend = meta_get_backend ();
-  MetaMonitorManager *monitor_manager =
-    meta_backend_get_monitor_manager (backend);
   MetaMonitorManagerKms *monitor_manager_kms =
-    META_MONITOR_MANAGER_KMS (monitor_manager);
+    renderer_native->monitor_manager_kms;
   CoglFrameInfo *frame_info;
 
   frame_info = g_queue_peek_tail (&onscreen->pending_frame_infos);
@@ -1105,19 +1115,23 @@ init_dumb_fb (MetaRendererNative *renderer_native,
               int                 height,
               GError            **error)
 {
+  MetaMonitorManagerKms *monitor_manager_kms =
+    renderer_native->monitor_manager_kms;
   struct drm_mode_create_dumb create_arg;
   struct drm_mode_destroy_dumb destroy_arg;
   struct drm_mode_map_dumb map_arg;
   uint32_t fb_id = 0;
   void *map;
+  int kms_fd;
+
+  kms_fd = meta_monitor_manager_kms_get_fd (monitor_manager_kms);
 
   create_arg = (struct drm_mode_create_dumb) {
     .bpp = 32, /* RGBX8888 */
     .width = width,
     .height = height
   };
-  if (drmIoctl (renderer_native->kms_fd, DRM_IOCTL_MODE_CREATE_DUMB,
-                &create_arg) != 0)
+  if (drmIoctl (kms_fd, DRM_IOCTL_MODE_CREATE_DUMB, &create_arg) != 0)
     {
       g_set_error (error, G_IO_ERROR,
                    G_IO_ERROR_FAILED,
@@ -1132,7 +1146,7 @@ init_dumb_fb (MetaRendererNative *renderer_native,
       uint32_t pitches[4] = { create_arg.pitch, };
       uint32_t offsets[4] = { 0 };
 
-      if (drmModeAddFB2 (renderer_native->kms_fd, width, height,
+      if (drmModeAddFB2 (kms_fd, width, height,
                          GBM_FORMAT_XRGB8888,
                          handles, pitches, offsets,
                          &fb_id, 0) != 0)
@@ -1145,7 +1159,7 @@ init_dumb_fb (MetaRendererNative *renderer_native,
 
   if (renderer_native->no_add_fb2)
     {
-      if (drmModeAddFB (renderer_native->kms_fd, width, height,
+      if (drmModeAddFB (kms_fd, width, height,
                         24 /* depth of RGBX8888 */,
                         32 /* bpp of RGBX8888 */,
                         create_arg.pitch,
@@ -1163,7 +1177,7 @@ init_dumb_fb (MetaRendererNative *renderer_native,
   map_arg = (struct drm_mode_map_dumb) {
     .handle = create_arg.handle
   };
-  if (drmIoctl (renderer_native->kms_fd, DRM_IOCTL_MODE_MAP_DUMB,
+  if (drmIoctl (kms_fd, DRM_IOCTL_MODE_MAP_DUMB,
                 &map_arg) != 0)
     {
       g_set_error (error, G_IO_ERROR,
@@ -1174,8 +1188,7 @@ init_dumb_fb (MetaRendererNative *renderer_native,
     }
 
   map = mmap (NULL, create_arg.size, PROT_WRITE, MAP_SHARED,
-              renderer_native->kms_fd,
-              map_arg.offset);
+              kms_fd, map_arg.offset);
   if (map == MAP_FAILED)
     {
       g_set_error (error, G_IO_ERROR,
@@ -1194,13 +1207,13 @@ init_dumb_fb (MetaRendererNative *renderer_native,
 
 err_mmap:
 err_map_dumb:
-  drmModeRmFB (renderer_native->kms_fd, fb_id);
+  drmModeRmFB (kms_fd, fb_id);
 
 err_add_fb:
   destroy_arg = (struct drm_mode_destroy_dumb) {
     .handle = create_arg.handle
   };
-  drmIoctl (renderer_native->kms_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_arg);
+  drmIoctl (kms_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_arg);
 
 err_ioctl:
   return FALSE;
@@ -1210,7 +1223,10 @@ static void
 release_dumb_fb (MetaRendererNative *renderer_native,
                  MetaOnscreenNative *onscreen_native)
 {
+  MetaMonitorManagerKms *monitor_manager_kms =
+    renderer_native->monitor_manager_kms;
   struct drm_mode_destroy_dumb destroy_arg;
+  int kms_fd;
 
   if (!onscreen_native->egl.dumb_fb.map)
     return;
@@ -1219,13 +1235,14 @@ release_dumb_fb (MetaRendererNative *renderer_native,
           onscreen_native->egl.dumb_fb.map_size);
   onscreen_native->egl.dumb_fb.map = NULL;
 
-  drmModeRmFB (renderer_native->kms_fd,
-               onscreen_native->egl.dumb_fb.fb_id);
+  kms_fd = meta_monitor_manager_kms_get_fd (monitor_manager_kms);
+
+  drmModeRmFB (kms_fd, onscreen_native->egl.dumb_fb.fb_id);
 
   destroy_arg = (struct drm_mode_destroy_dumb) {
     .handle = onscreen_native->egl.dumb_fb.handle
   };
-  drmIoctl (renderer_native->kms_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_arg);
+  drmIoctl (kms_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_arg);
 }
 #endif /* HAVE_EGL_DEVICE */
 
@@ -1416,12 +1433,6 @@ meta_renderer_native_get_gbm (MetaRendererNative *renderer_native)
   return renderer_native->gbm.device;
 }
 
-int
-meta_renderer_native_get_kms_fd (MetaRendererNative *renderer_native)
-{
-  return renderer_native->kms_fd;
-}
-
 void
 meta_renderer_native_queue_modes_reset (MetaRendererNative *renderer_native)
 {
@@ -1529,11 +1540,8 @@ meta_renderer_native_set_legacy_view_size (MetaRendererNative *renderer_native,
 
   if (width != view_layout.width || height != view_layout.height)
     {
-      MetaBackend *backend = meta_get_backend ();
-      MetaMonitorManager *monitor_manager =
-        meta_backend_get_monitor_manager (backend);
       MetaMonitorManagerKms *monitor_manager_kms =
-        META_MONITOR_MANAGER_KMS (monitor_manager);
+        renderer_native->monitor_manager_kms;
       CoglFramebuffer *framebuffer =
         clutter_stage_view_get_onscreen (stage_view);
       CoglOnscreen *onscreen = COGL_ONSCREEN (framebuffer);
@@ -1666,18 +1674,15 @@ meta_onscreen_native_set_view (CoglOnscreen     *onscreen,
 MetaRendererView *
 meta_renderer_native_create_legacy_view (MetaRendererNative *renderer_native)
 {
-  MetaBackend *backend = meta_get_backend ();
   MetaMonitorManager *monitor_manager =
-    meta_backend_get_monitor_manager (backend);
+    META_MONITOR_MANAGER (renderer_native->monitor_manager_kms);
   CoglOnscreen *onscreen = NULL;
+  MetaBackend *backend = meta_get_backend ();
   ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
   CoglContext *cogl_context = clutter_backend_get_cogl_context (clutter_backend);
   cairo_rectangle_int_t view_layout = { 0 };
   MetaRendererView *view;
   GError *error = NULL;
-
-  if (!monitor_manager)
-    return NULL;
 
   meta_monitor_manager_get_screen_size (monitor_manager,
                                         &view_layout.width,
@@ -1739,9 +1744,10 @@ static MetaRendererView *
 meta_renderer_native_create_view (MetaRenderer       *renderer,
                                   MetaLogicalMonitor *logical_monitor)
 {
-  MetaBackend *backend = meta_get_backend ();
+  MetaRendererNative *renderer_native = META_RENDERER_NATIVE (renderer);
   MetaMonitorManager *monitor_manager =
-    meta_backend_get_monitor_manager (backend);
+    META_MONITOR_MANAGER (renderer_native->monitor_manager_kms);
+  MetaBackend *backend = meta_get_backend ();
   ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
   CoglContext *cogl_context = clutter_backend_get_cogl_context (clutter_backend);
   CoglDisplay *cogl_display = cogl_context_get_display (cogl_context);
@@ -1859,11 +1865,8 @@ meta_renderer_native_get_property (GObject    *object,
 
   switch (prop_id)
     {
-    case PROP_KMS_FD:
-      g_value_set_int (value, renderer_native->kms_fd);
-      break;
-    case PROP_KMS_FILE_PATH:
-      g_value_set_string (value, renderer_native->kms_file_path);
+    case PROP_MONITOR_MANAGER:
+      g_value_set_object (value, renderer_native->monitor_manager_kms);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1881,11 +1884,8 @@ meta_renderer_native_set_property (GObject      *object,
 
   switch (prop_id)
     {
-    case PROP_KMS_FD:
-      renderer_native->kms_fd = g_value_get_int (value);
-      break;
-    case PROP_KMS_FILE_PATH:
-      renderer_native->kms_file_path = g_strdup (g_value_get_string (value));
+    case PROP_MONITOR_MANAGER:
+      renderer_native->monitor_manager_kms = g_value_get_object (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1900,8 +1900,6 @@ meta_renderer_native_finalize (GObject *object)
 
   g_clear_pointer (&renderer_native->gbm.device, gbm_device_destroy);
 
-  g_free (renderer_native->kms_file_path);
-
   G_OBJECT_CLASS (meta_renderer_native_parent_class)->finalize (object);
 }
 
@@ -1909,10 +1907,13 @@ static gboolean
 init_gbm (MetaRendererNative *renderer_native,
           GError            **error)
 {
+  MetaMonitorManagerKms *monitor_manager_kms =
+    renderer_native->monitor_manager_kms;
   MetaBackend *backend = meta_get_backend ();
   MetaEgl *egl = meta_backend_get_egl (backend);
   struct gbm_device *gbm_device;
   EGLDisplay egl_display;
+  int kms_fd;
 
   if (!meta_egl_has_extensions (egl, EGL_NO_DISPLAY, NULL,
                                 "EGL_MESA_platform_gbm",
@@ -1924,7 +1925,9 @@ init_gbm (MetaRendererNative *renderer_native,
       return FALSE;
     }
 
-  gbm_device = gbm_create_device (renderer_native->kms_fd);
+  kms_fd = meta_monitor_manager_kms_get_fd (monitor_manager_kms);
+
+  gbm_device = gbm_create_device (kms_fd);
   if (!gbm_device)
     {
       g_set_error (error, G_IO_ERROR,
@@ -1975,11 +1978,14 @@ static EGLDeviceEXT
 find_egl_device (MetaRendererNative *renderer_native,
                  GError            **error)
 {
+  MetaMonitorManagerKms *monitor_manager_kms =
+    renderer_native->monitor_manager_kms;
   MetaBackend *backend = meta_get_backend ();
   MetaEgl *egl = meta_backend_get_egl (backend);
   char **missing_extensions;
   EGLint num_devices;
   EGLDeviceEXT *devices;
+  const char *kms_file_path;
   EGLDeviceEXT device;
   EGLint i;
 
@@ -2012,6 +2018,8 @@ find_egl_device (MetaRendererNative *renderer_native,
       return EGL_NO_DEVICE_EXT;
     }
 
+  kms_file_path = meta_monitor_manager_kms_get_file_path (monitor_manager_kms);
+
   device = EGL_NO_DEVICE_EXT;
   for (i = 0; i < num_devices; i++)
     {
@@ -2023,7 +2031,7 @@ find_egl_device (MetaRendererNative *renderer_native,
       if (!egl_device_drm_path)
         continue;
 
-      if (g_str_equal (egl_device_drm_path, renderer_native->kms_file_path))
+      if (g_str_equal (egl_device_drm_path, kms_file_path))
         {
           device = devices[i];
           break;
@@ -2050,8 +2058,11 @@ get_egl_device_display (MetaRendererNative *renderer_native,
 {
   MetaBackend *backend = meta_get_backend ();
   MetaEgl *egl = meta_backend_get_egl (backend);
+  MetaMonitorManagerKms *monitor_manager_kms =
+    renderer_native->monitor_manager_kms;
+  int kms_fd = meta_monitor_manager_kms_get_fd (monitor_manager_kms);
   EGLint platform_attribs[] = {
-    EGL_DRM_MASTER_FD_EXT, renderer_native->kms_fd,
+    EGL_DRM_MASTER_FD_EXT, kms_fd,
     EGL_NONE
   };
 
@@ -2196,34 +2207,25 @@ meta_renderer_native_class_init (MetaRendererNativeClass *klass)
   renderer_class->create_cogl_renderer = meta_renderer_native_create_cogl_renderer;
   renderer_class->create_view = meta_renderer_native_create_view;
 
-  g_object_class_install_property (object_class,
-                                   PROP_KMS_FD,
-                                   g_param_spec_int ("kms-fd",
-                                                     "KMS fd",
-                                                     "The KMS file descriptor",
-                                                     0, G_MAXINT, 0,
-                                                     G_PARAM_READWRITE |
-                                                     G_PARAM_CONSTRUCT_ONLY));
-  g_object_class_install_property (object_class,
-                                   PROP_KMS_FILE_PATH,
-                                   g_param_spec_string ("kms-file-path",
-                                                        "KMS file path",
-                                                        "The KMS file path",
-                                                        NULL,
-                                                        G_PARAM_READWRITE |
-                                                        G_PARAM_CONSTRUCT_ONLY));
+  obj_props[PROP_MONITOR_MANAGER] =
+    g_param_spec_object ("monitor-manager",
+                         "monitor-manager",
+                         "MetaMonitorManagerKms",
+                         META_TYPE_MONITOR_MANAGER_KMS,
+                         G_PARAM_READWRITE |
+                         G_PARAM_CONSTRUCT_ONLY |
+                         G_PARAM_STATIC_STRINGS);
+  g_object_class_install_properties (object_class, PROP_LAST, obj_props);
 }
 
 MetaRendererNative *
-meta_renderer_native_new (int         kms_fd,
-                          const char *kms_file_path,
-                          GError    **error)
+meta_renderer_native_new (MetaMonitorManagerKms *monitor_manager_kms,
+                          GError               **error)
 {
   MetaRendererNative *renderer_native;
 
   renderer_native = g_object_new (META_TYPE_RENDERER_NATIVE,
-                                  "kms-fd", kms_fd,
-                                  "kms-file-path", kms_file_path,
+                                  "monitor-manager", monitor_manager_kms,
                                   NULL);
   if (!g_initable_init (G_INITABLE (renderer_native), NULL, error))
     {
