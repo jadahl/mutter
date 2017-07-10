@@ -1058,7 +1058,9 @@ meta_monitor_manager_xrandr_get_default_layout_mode (MetaMonitorManager *manager
 static void
 meta_monitor_manager_xrandr_init (MetaMonitorManagerXrandr *manager_xrandr)
 {
-  MetaBackendX11 *backend = META_BACKEND_X11 (meta_get_backend ());
+  MetaMonitorManager *manager = META_MONITOR_MANAGER (manager_xrandr);
+  MetaBackendX11 *backend =
+    META_BACKEND_X11 (meta_monitor_manager_get_backend (manager));
 
   manager_xrandr->xdisplay = meta_backend_x11_get_xdisplay (backend);
 
