@@ -569,6 +569,7 @@ meta_monitor_manager_dummy_apply_monitors_config (MetaMonitorManager      *manag
       manager->screen_height = 0;
 
       meta_monitor_manager_rebuild (manager, NULL);
+      return TRUE;
     }
 
   if (!meta_monitor_config_manager_assign (manager, config,
