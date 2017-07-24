@@ -29,7 +29,8 @@
 #include "backends/meta-gpu.h"
 #include "backends/native/meta-gpu-kms.h"
 
-gboolean meta_crtc_kms_is_transform_handled (MetaCrtc *crtc);
+gboolean meta_crtc_kms_is_transform_handled (MetaCrtc            *crtc,
+                                             MetaMonitorTransform transform);
 
 void meta_crtc_kms_apply_transform (MetaCrtc *crtc);
 

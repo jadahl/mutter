@@ -42,11 +42,12 @@ typedef struct _MetaCrtcKms
 } MetaCrtcKms;
 
 gboolean
-meta_crtc_kms_is_transform_handled (MetaCrtc *crtc)
+meta_crtc_kms_is_transform_handled (MetaCrtc            *crtc,
+                                    MetaMonitorTransform transform)
 {
   MetaCrtcKms *crtc_kms = crtc->driver_private;
 
-  if ((1 << crtc->transform) & crtc_kms->all_hw_transforms)
+  if ((1 << transform) & crtc_kms->all_hw_transforms)
     return TRUE;
   else
     return FALSE;
@@ -67,6 +68,9 @@ meta_crtc_kms_apply_transform (MetaCrtc *crtc)
     hw_transform = crtc->transform;
   else
     hw_transform = META_MONITOR_TRANSFORM_NORMAL;
+
+  if (!meta_crtc_kms_is_transform_handled (crtc, META_MONITOR_TRANSFORM_NORMAL))
+    return;
 
   if (drmModeObjectSetProperty (kms_fd,
                                 crtc_kms->primary_plane_id,
