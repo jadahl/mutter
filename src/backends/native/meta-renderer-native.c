@@ -210,6 +210,16 @@ meta_create_renderer_native_gpu_data (MetaGpuKms *gpu_kms)
   return renderer_gpu_data;
 }
 
+static MetaEgl *
+meta_renderer_native_get_egl (MetaRendererNative *renderer_native)
+{
+  MetaMonitorManager *monitor_manager =
+    META_MONITOR_MANAGER (renderer_native->monitor_manager_kms);
+  MetaBackend *backend = meta_monitor_manager_get_backend (monitor_manager);
+
+  return meta_backend_get_egl (backend);
+}
+
 static void
 meta_renderer_native_disconnect (CoglRenderer *cogl_renderer)
 {
@@ -1916,8 +1926,7 @@ find_egl_device (MetaRendererNative *renderer_native,
                  MetaGpuKms         *gpu_kms,
                  GError            **error)
 {
-  MetaBackend *backend = meta_get_backend ();
-  MetaEgl *egl = meta_backend_get_egl (backend);
+  MetaEgl *egl = meta_renderer_native_get_egl (renderer_native);
   char **missing_extensions;
   EGLint num_devices;
   EGLDeviceEXT *devices;
@@ -1993,8 +2002,7 @@ get_egl_device_display (MetaRendererNative *renderer_native,
                         EGLDeviceEXT        egl_device,
                         GError            **error)
 {
-  MetaBackend *backend = meta_get_backend ();
-  MetaEgl *egl = meta_backend_get_egl (backend);
+  MetaEgl *egl = meta_renderer_native_get_egl (renderer_native);
   int kms_fd = meta_gpu_kms_get_fd (gpu_kms);
   EGLint platform_attribs[] = {
     EGL_DRM_MASTER_FD_EXT, kms_fd,
@@ -2012,8 +2020,7 @@ init_egl_device (MetaRendererNative *renderer_native,
                  MetaGpuKms         *gpu_kms,
                  GError            **error)
 {
-  MetaBackend *backend = meta_get_backend ();
-  MetaEgl *egl = meta_backend_get_egl (backend);
+  MetaEgl *egl = meta_renderer_native_get_egl (renderer_native);
   char **missing_extensions;
   EGLDeviceEXT egl_device;
   EGLDisplay egl_display;
