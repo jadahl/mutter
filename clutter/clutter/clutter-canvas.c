@@ -46,6 +46,7 @@
 #include "clutter-build-config.h"
 #endif
 
+#include <math.h>
 #include <cogl/cogl.h>
 #include <cairo-gobject.h>
 
@@ -71,7 +72,7 @@ struct _ClutterCanvasPrivate
 
   int width;
   int height;
-  int scale_factor;
+  float scale_factor;
 
   CoglTexture *texture;
   gboolean dirty;
@@ -184,7 +185,7 @@ clutter_canvas_set_property (GObject      *gobject,
 
     case PROP_SCALE_FACTOR:
       {
-        gint new_scale_factor = g_value_get_int (value);
+        gfloat new_scale_factor = g_value_get_float (value);
 
         if (priv->scale_factor != new_scale_factor)
           {
@@ -220,7 +221,7 @@ clutter_canvas_get_property (GObject    *gobject,
       break;
 
     case PROP_SCALE_FACTOR:
-      g_value_set_int (value, priv->scale_factor);
+      g_value_set_float (value, priv->scale_factor);
       break;
 
     default:
@@ -274,13 +275,13 @@ clutter_canvas_class_init (ClutterCanvasClass *klass)
    * Since: 1.18
    */
   obj_props[PROP_SCALE_FACTOR] =
-    g_param_spec_int ("scale-factor",
-                      P_("Scale Factor"),
-                      P_("The Scale factor of the canvas"),
-                      1, G_MAXINT,
-                      1,
-                      G_PARAM_READWRITE |
-                      G_PARAM_STATIC_STRINGS);
+    g_param_spec_float ("scale-factor",
+                        P_("Scale Factor"),
+                        P_("The Scale factor of the canvas"),
+                        1.0f, G_MAXFLOAT,
+                        1.0f,
+                        G_PARAM_READWRITE |
+                        G_PARAM_STATIC_STRINGS);
 
   /**
    * ClutterCanvas::draw:
@@ -327,7 +328,7 @@ clutter_canvas_init (ClutterCanvas *self)
 
   self->priv->width = -1;
   self->priv->height = -1;
-  self->priv->scale_factor = 1;
+  self->priv->scale_factor = 1.0f;
 }
 
 static void
@@ -377,8 +378,8 @@ clutter_canvas_emit_draw (ClutterCanvas *self)
 
   priv->dirty = TRUE;
 
-  real_width = priv->width * priv->scale_factor;
-  real_height = priv->height * priv->scale_factor;
+  real_width = ceilf (priv->width * priv->scale_factor);
+  real_height = ceilf (priv->height * priv->scale_factor);
 
   CLUTTER_NOTE (MISC, "Creating Cairo surface with size %d x %d",
                 priv->width, priv->height);
@@ -489,10 +490,10 @@ clutter_canvas_get_preferred_size (ClutterContent *content,
     return FALSE;
 
   if (width != NULL)
-    *width = priv->width * priv->scale_factor;
+    *width = ceilf (priv->width * priv->scale_factor);
 
   if (height != NULL)
-    *height = priv->height * priv->scale_factor;
+    *height = ceilf (priv->height * priv->scale_factor);
 
   return TRUE;
 }
@@ -616,10 +617,10 @@ clutter_canvas_set_size (ClutterCanvas *canvas,
  */
 void
 clutter_canvas_set_scale_factor (ClutterCanvas *canvas,
-                                 int            scale)
+                                 float          scale)
 {
   g_return_if_fail (CLUTTER_IS_CANVAS (canvas));
-  g_return_if_fail (scale > 0);
+  g_return_if_fail (scale >= 1.0f);
 
   if (canvas->priv->scale_factor != scale)
     {
@@ -643,10 +644,10 @@ clutter_canvas_set_scale_factor (ClutterCanvas *canvas,
  *
  * Since: 1.18
  */
-int
+float
 clutter_canvas_get_scale_factor (ClutterCanvas *canvas)
 {
-  g_return_val_if_fail (CLUTTER_IS_CANVAS (canvas), -1);
+  g_return_val_if_fail (CLUTTER_IS_CANVAS (canvas), -1.0f);
 
   return canvas->priv->scale_factor;
 }
