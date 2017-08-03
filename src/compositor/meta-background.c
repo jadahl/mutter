@@ -743,6 +743,7 @@ meta_background_get_texture (MetaBackground         *self,
   MetaRectangle geometry;
   cairo_rectangle_int_t monitor_area;
   CoglTexture *texture1, *texture2;
+  gfloat monitor_scale;
 
   g_return_val_if_fail (META_IS_BACKGROUND (self), NULL);
   priv = self->priv;
@@ -751,10 +752,11 @@ meta_background_get_texture (MetaBackground         *self,
   monitor = &priv->monitors[monitor_index];
 
   meta_screen_get_monitor_geometry (priv->screen, monitor_index, &geometry);
-  monitor_area.x = geometry.x;
-  monitor_area.y = geometry.y;
-  monitor_area.width = geometry.width;
-  monitor_area.height = geometry.height;
+  monitor_scale = meta_screen_get_monitor_scale (priv->screen, monitor_index);
+  monitor_area.x = geometry.x * monitor_scale;
+  monitor_area.y = geometry.y * monitor_scale;
+  monitor_area.width = geometry.width * monitor_scale;
+  monitor_area.height = geometry.height * monitor_scale;
 
   texture1 = priv->background_image1 ? meta_background_image_get_texture (priv->background_image1) : NULL;
   texture2 = priv->background_image2 ? meta_background_image_get_texture (priv->background_image2) : NULL;
