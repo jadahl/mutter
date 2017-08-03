@@ -178,6 +178,16 @@ G_DEFINE_TYPE_WITH_CODE (MetaBackgroundActor, meta_background_actor, CLUTTER_TYP
                          G_IMPLEMENT_INTERFACE (META_TYPE_CULLABLE, cullable_iface_init));
 
 static void
+sync_actor_scale_with_monitor (MetaBackgroundActor *self)
+{
+  MetaBackgroundActorPrivate *priv = self->priv;
+  float scale;
+
+  scale = meta_screen_get_monitor_scale (priv->screen, priv->monitor);
+  clutter_actor_set_scale (CLUTTER_ACTOR (self), 1.0 / scale, 1.0 / scale);
+}
+
+static void
 set_clip_region (MetaBackgroundActor *self,
                  cairo_region_t      *clip_region)
 {
@@ -212,14 +222,16 @@ get_preferred_size (MetaBackgroundActor *self,
 {
   MetaBackgroundActorPrivate *priv = META_BACKGROUND_ACTOR (self)->priv;
   MetaRectangle monitor_geometry;
+  gfloat scale;
 
   meta_screen_get_monitor_geometry (priv->screen, priv->monitor, &monitor_geometry);
+  scale = meta_screen_get_monitor_scale (priv->screen, priv->monitor);
 
   if (width != NULL)
-    *width = monitor_geometry.width;
+    *width = monitor_geometry.width * scale;
 
   if (height != NULL)
-    *height = monitor_geometry.height;
+    *height = monitor_geometry.height * scale;
 }
 
 static void
@@ -538,6 +550,16 @@ meta_background_actor_paint (ClutterActor *actor)
 }
 
 static void
+meta_background_actor_constructed (GObject *object)
+{
+  MetaBackgroundActor *self = META_BACKGROUND_ACTOR (object);
+
+  sync_actor_scale_with_monitor (self);
+
+  G_OBJECT_CLASS (meta_background_actor_parent_class)->constructed (object);
+}
+
+static void
 meta_background_actor_set_property (GObject      *object,
                                     guint         prop_id,
                                     const GValue *value,
@@ -651,6 +673,7 @@ meta_background_actor_class_init (MetaBackgroundActorClass *klass)
 
   g_type_class_add_private (klass, sizeof (MetaBackgroundActorPrivate));
 
+  object_class->constructed = meta_background_actor_constructed;
   object_class->dispose = meta_background_actor_dispose;
   object_class->set_property = meta_background_actor_set_property;
   object_class->get_property = meta_background_actor_get_property;
@@ -843,6 +866,7 @@ on_background_changed (MetaBackground      *background,
                        MetaBackgroundActor *self)
 {
   invalidate_pipeline (self, CHANGED_BACKGROUND);
+  sync_actor_scale_with_monitor (self);
   clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
 }
 
