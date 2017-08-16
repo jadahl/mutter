@@ -24,7 +24,7 @@
 
 #include "backends/meta-screen-cast.h"
 
-#include <pipewire/client/pipewire.h>
+#include <pipewire/pipewire.h>
 
 #include "backends/meta-backend-private.h"
 #include "backends/meta-screen-cast-session.h"

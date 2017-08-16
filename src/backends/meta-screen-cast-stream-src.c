@@ -25,8 +25,7 @@
 #include "backends/meta-screen-cast-stream-src.h"
 
 #include <errno.h>
-#include <pipewire/client/pipewire.h>
-#include <pipewire/client/sig.h>
+#include <pipewire/pipewire.h>
 #include <spa/format-builder.h>
 #include <spa/format-utils.h>
 #include <spa/props.h>
@@ -83,15 +82,16 @@ typedef struct _MetaScreenCastStreamSrcPrivate
 {
   MetaScreenCastStream *stream;
 
-  struct pw_context *pipewire_context;
+  struct pw_core *pipewire_core;
+  struct pw_remote *pipewire_remote;
+  struct pw_type *pipewire_type;
   MetaPipeWireSource *pipewire_source;
-  struct pw_listener on_state_changed_listener;
+  struct spa_hook pipewire_remote_listener;
 
   gboolean is_enabled;
 
   struct pw_stream *pipewire_stream;
-  struct pw_listener on_stream_state_changed_listener;
-  struct pw_listener on_stream_format_changed_listener;
+  struct spa_hook pipewire_stream_listener;
 
   MetaSpaType spa_type;
   uint8_t params_buffer[1024];
@@ -236,24 +236,25 @@ meta_screen_cast_stream_src_notify_closed (MetaScreenCastStreamSrc *src)
 }
 
 static void
-on_stream_state_changed (struct pw_listener *listener,
-                         struct pw_stream   *stream)
+on_stream_state_changed (void                 *data,
+                         enum pw_stream_state  old,
+                         enum pw_stream_state  state,
+                         const char           *error_message)
 {
-  MetaScreenCastStreamSrc *src =
-    PRIVATE_OWNER_FROM_FIELD (MetaScreenCastStreamSrc,
-                              listener,
-                              on_stream_state_changed_listener);
+  MetaScreenCastStreamSrc *src = data;
   MetaScreenCastStreamSrcPrivate *priv =
     meta_screen_cast_stream_src_get_instance_private (src);
+  uint32_t node_id;
 
-  switch (stream->state)
+  switch (state)
     {
     case PW_STREAM_STATE_ERROR:
-      g_warning ("pipewire stream error: %s", priv->pipewire_stream->error);
+      g_warning ("pipewire stream error: %s", error_message);
       meta_screen_cast_stream_src_notify_closed (src);
       break;
     case PW_STREAM_STATE_CONFIGURE:
-      g_signal_emit (src, signals[READY], 0, (unsigned int) stream->node_id);
+      node_id = pw_stream_get_node_id (priv->pipewire_stream);
+      g_signal_emit (src, signals[READY], 0, (unsigned int) node_id);
       break;
     case PW_STREAM_STATE_UNCONNECTED:
     case PW_STREAM_STATE_CONNECTING:
@@ -270,17 +271,13 @@ on_stream_state_changed (struct pw_listener *listener,
 }
 
 static void
-on_stream_format_changed (struct pw_listener *listener,
-                          struct pw_stream   *stream,
-                          struct spa_format  *format)
+on_stream_format_changed (void              *data,
+                          struct spa_format *format)
 {
-  MetaScreenCastStreamSrc *src =
-    PRIVATE_OWNER_FROM_FIELD (MetaScreenCastStreamSrc,
-                              listener,
-                              on_stream_format_changed_listener);
+  MetaScreenCastStreamSrc *src = data;
   MetaScreenCastStreamSrcPrivate *priv =
     meta_screen_cast_stream_src_get_instance_private (src);
-  struct pw_context *pipewire_context = priv->pipewire_context;
+  struct pw_type *pipewire_type = priv->pipewire_type;
   struct spa_type_param_alloc_buffers *param_alloc_buffers;
   struct spa_pod_builder pod_builder = { NULL };
   struct spa_pod_frame object_frame;
@@ -290,7 +287,7 @@ on_stream_format_changed (struct pw_listener *listener,
 
   if (!format)
     {
-      pw_stream_finish_format (stream, SPA_RESULT_OK, NULL, 0);
+      pw_stream_finish_format (priv->pipewire_stream, SPA_RESULT_OK, NULL, 0);
       return;
     }
 
@@ -302,7 +299,7 @@ on_stream_format_changed (struct pw_listener *listener,
                         priv->params_buffer,
                         sizeof (priv->params_buffer));
 
-  param_alloc_buffers = &pipewire_context->type.param_alloc_buffers;
+  param_alloc_buffers = &pipewire_type->param_alloc_buffers;
   spa_pod_builder_object (&pod_builder, &object_frame, 0,
                           param_alloc_buffers->Buffers,
                           PROP (&prop_frame, param_alloc_buffers->size,
@@ -322,9 +319,15 @@ on_stream_format_changed (struct pw_listener *listener,
   params[0] = SPA_POD_BUILDER_DEREF (&pod_builder, object_frame.ref,
                                      struct spa_param);
 
-  pw_stream_finish_format (stream, SPA_RESULT_OK,
+  pw_stream_finish_format (priv->pipewire_stream, SPA_RESULT_OK,
                            params, G_N_ELEMENTS (params));
 }
+
+static const struct pw_stream_events stream_events = {
+  PW_VERSION_STREAM_EVENTS,
+  .state_changed = on_stream_state_changed,
+  .format_changed = on_stream_format_changed,
+};
 
 static struct pw_stream *
 create_pipewire_stream (MetaScreenCastStreamSrc  *src,
@@ -344,7 +347,7 @@ create_pipewire_stream (MetaScreenCastStreamSrc  *src,
   float frame_rate;
   MetaFraction frame_rate_fraction;
 
-  pipewire_stream = pw_stream_new (priv->pipewire_context,
+  pipewire_stream = pw_stream_new (priv->pipewire_remote,
                                    "meta-screen-cast-src",
                                    NULL);
 
@@ -376,12 +379,10 @@ create_pipewire_stream (MetaScreenCastStreamSrc  *src,
                                      frame_rate_fraction.denom));
   format = SPA_POD_BUILDER_DEREF (&pod_builder, format_frame.ref, struct spa_format);
 
-  pw_signal_add (&pipewire_stream->state_changed,
-                 &priv->on_stream_state_changed_listener,
-                 on_stream_state_changed);
-  pw_signal_add (&pipewire_stream->format_changed,
-                 &priv->on_stream_format_changed_listener,
-                 on_stream_format_changed);
+  pw_stream_add_listener (pipewire_stream,
+                          &priv->pipewire_stream_listener,
+                          &stream_events,
+                          src);
 
   if (!pw_stream_connect (pipewire_stream,
                           PW_DIRECTION_OUTPUT,
@@ -399,25 +400,24 @@ create_pipewire_stream (MetaScreenCastStreamSrc  *src,
 }
 
 static void
-on_state_changed (struct pw_listener *listener,
-                  struct pw_context  *pipewire_context)
+on_state_changed (void                 *data,
+                  enum pw_remote_state  old,
+                  enum pw_remote_state  state,
+                  const char           *error_message)
 {
-  MetaScreenCastStreamSrc *src =
-    PRIVATE_OWNER_FROM_FIELD (MetaScreenCastStreamSrc,
-                              listener,
-                              on_state_changed_listener);
+  MetaScreenCastStreamSrc *src = data;
   MetaScreenCastStreamSrcPrivate *priv =
     meta_screen_cast_stream_src_get_instance_private (src);
   struct pw_stream *pipewire_stream;
   GError *error = NULL;
 
-  switch (pipewire_context->state)
+  switch (state)
     {
-    case PW_CONTEXT_STATE_ERROR:
-      g_warning ("pipewire context error: %s\n", pipewire_context->error);
+    case PW_REMOTE_STATE_ERROR:
+      g_warning ("pipewire remote error: %s\n", error_message);
       meta_screen_cast_stream_src_notify_closed (src);
       break;
-    case PW_CONTEXT_STATE_CONNECTED:
+    case PW_REMOTE_STATE_CONNECTED:
       pipewire_stream = create_pipewire_stream (src, &error);
       if (!pipewire_stream)
         {
@@ -430,8 +430,8 @@ on_state_changed (struct pw_listener *listener,
           priv->pipewire_stream = pipewire_stream;
         }
       break;
-    case PW_CONTEXT_STATE_UNCONNECTED:
-    case PW_CONTEXT_STATE_CONNECTING:
+    case PW_REMOTE_STATE_UNCONNECTED:
+    case PW_REMOTE_STATE_CONNECTING:
       break;
     }
 }
@@ -500,7 +500,7 @@ create_pipewire_source (void)
   pipewire_source =
     (MetaPipeWireSource *) g_source_new (&pipewire_source_funcs,
                                          sizeof (MetaPipeWireSource));
-  pipewire_source->pipewire_loop = pw_loop_new ();
+  pipewire_source->pipewire_loop = pw_loop_new (NULL);
   g_source_add_unix_fd (&pipewire_source->base,
                         pw_loop_get_fd (pipewire_source->pipewire_loop),
                         G_IO_IN | G_IO_ERR);
@@ -510,6 +510,11 @@ create_pipewire_source (void)
 
   return pipewire_source;
 }
+
+static const struct pw_remote_events remote_events = {
+  PW_VERSION_REMOTE_EVENTS,
+  .state_changed = on_state_changed,
+};
 
 static gboolean
 meta_screen_cast_stream_src_initable_init (GInitable     *initable,
@@ -521,21 +526,35 @@ meta_screen_cast_stream_src_initable_init (GInitable     *initable,
     meta_screen_cast_stream_src_get_instance_private (src);
 
   priv->pipewire_source = create_pipewire_source ();
-  priv->pipewire_context = pw_context_new (priv->pipewire_source->pipewire_loop,
-                                           "meta-screen-cast-src",
-                                           NULL);
-
-  pw_signal_add (&priv->pipewire_context->state_changed,
-                 &priv->on_state_changed_listener,
-                 on_state_changed);
-
-  init_spa_type (&priv->spa_type, priv->pipewire_context->type.map);
-
-  if (!pw_context_connect (priv->pipewire_context,
-                           PW_CONTEXT_FLAG_NO_REGISTRY))
+  priv->pipewire_core = pw_core_new (priv->pipewire_source->pipewire_loop,
+                                     NULL);
+  if (!priv->pipewire_core)
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
-                   "Couldn't connect to pipewire context");
+                   "Failed to create pipewire core");
+      return FALSE;
+    }
+
+  priv->pipewire_remote = pw_remote_new (priv->pipewire_core, NULL);
+  if (!priv->pipewire_remote)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "Couldn't creat pipewire remote");
+      return FALSE;
+    }
+
+  pw_remote_add_listener (priv->pipewire_remote,
+                          &priv->pipewire_remote_listener,
+                          &remote_events,
+                          src);
+
+  priv->pipewire_type = pw_core_get_type (priv->pipewire_core);
+  init_spa_type (&priv->spa_type, priv->pipewire_type->map);
+
+  if (pw_remote_connect (priv->pipewire_remote) != 0)
+    {
+      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                   "Couldn't connect pipewire remote");
       return FALSE;
     }
 
@@ -568,7 +587,8 @@ meta_screen_cast_stream_src_finalize (GObject *object)
     meta_screen_cast_stream_src_disable (src);
 
   g_clear_pointer (&priv->pipewire_stream, (GDestroyNotify) pw_stream_destroy);
-  pw_context_destroy (priv->pipewire_context);
+  pw_remote_destroy (priv->pipewire_remote);
+  pw_core_destroy (priv->pipewire_core);
   g_source_destroy (&priv->pipewire_source->base);
 
   G_OBJECT_CLASS (meta_screen_cast_stream_src_parent_class)->finalize (object);
