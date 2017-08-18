@@ -445,3 +445,9 @@ meta_wayland_compositor_is_shortcuts_inhibited (MetaWaylandCompositor *composito
 
   return FALSE;
 }
+
+struct wl_display *
+meta_wayland_compositor_get_wl_display (MetaWaylandCompositor *compositor)
+{
+  return compositor->wayland_display;
+}

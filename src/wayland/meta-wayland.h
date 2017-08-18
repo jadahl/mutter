@@ -63,5 +63,7 @@ void                    meta_wayland_compositor_restore_shortcuts      (MetaWayl
 gboolean                meta_wayland_compositor_is_shortcuts_inhibited (MetaWaylandCompositor *compositor,
                                                                         ClutterInputDevice    *source);
 
+struct wl_display *     meta_wayland_compositor_get_wl_display (MetaWaylandCompositor *compositor);
+
 #endif
 
