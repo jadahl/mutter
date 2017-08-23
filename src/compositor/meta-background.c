@@ -382,41 +382,19 @@ set_texture_area_from_monitor_area (cairo_rectangle_int_t *monitor_area,
   texture_area->height = monitor_area->height;
 }
 
-static float
-get_maximum_monitor_scaling (MetaBackground *self)
-{
-  MetaBackgroundPrivate *priv = self->priv;
-  float max_monitor_scale = 0.0f;
-  int i, num_monitors;
-
-  num_monitors = meta_screen_get_n_monitors (priv->screen);
-
-  for (i = 0; i < num_monitors; ++i)
-    {
-      float monitor_scale = meta_screen_get_monitor_scale (priv->screen, i);
-      max_monitor_scale = MAX (max_monitor_scale, monitor_scale);
-    }
-
-  g_return_val_if_fail (max_monitor_scale > 0.0f, 1.0f);
-
-  return max_monitor_scale;
-}
-
 static void
 get_texture_area (MetaBackground          *self,
                   cairo_rectangle_int_t   *monitor_rect,
                   float                     monitor_scale,
                   CoglTexture             *texture,
-                  cairo_rectangle_int_t   *texture_area,
-                  float                   *coords_scale)
+                  cairo_rectangle_int_t   *texture_area)
 {
   MetaBackgroundPrivate *priv = self->priv;
   cairo_rectangle_int_t image_area;
   int screen_width, screen_height;
   float texture_width, texture_height;
-  float monitor_x_scale, monitor_y_scale, max_monitor_scale;
+  float monitor_x_scale, monitor_y_scale;
 
-  *coords_scale = 1.0f;
   texture_width = cogl_texture_get_width (texture);
   texture_height = cogl_texture_get_height (texture);
 
@@ -500,14 +478,10 @@ get_texture_area (MetaBackground          *self,
          * of the region set to align with monitor associated with the background.
          */
         meta_screen_get_size (priv->screen, &screen_width, &screen_height);
-        max_monitor_scale = get_maximum_monitor_scaling (self);
 
-        /* unclipped texture area is whole screen, scaled by maximum scaling */
-        image_area.width = screen_width * max_monitor_scale;
-        image_area.height = screen_height * max_monitor_scale;
-
-        /* We need to scale coordinates down to monitor space */
-        *coords_scale = max_monitor_scale / monitor_scale;
+        /* unclipped texture area is whole screen, scaled depending on monitor */
+        image_area.width = screen_width * monitor_scale;
+        image_area.height = screen_height * monitor_scale;
 
         /* But make (0,0) line up with the appropriate monitor */
         image_area.x = -monitor_rect->x;
@@ -530,10 +504,8 @@ draw_texture (MetaBackground        *self,
   MetaBackgroundPrivate *priv = self->priv;
   cairo_rectangle_int_t texture_area;
   gboolean bare_region_visible;
-  float coords_scale;
 
-  get_texture_area (self, monitor_area, monitor_scale, texture, &texture_area,
-                    &coords_scale);
+  get_texture_area (self, monitor_area, monitor_scale, texture, &texture_area);
 
   switch (priv->style)
     {
@@ -548,10 +520,10 @@ draw_texture (MetaBackground        *self,
                                                 0,
                                                 monitor_area->width,
                                                 monitor_area->height,
-                                                (- texture_area.x * coords_scale) / (float)texture_area.width,
-                                                (- texture_area.y * coords_scale) / (float)texture_area.height,
-                                                ((monitor_area->width - texture_area.x) * coords_scale) / (float)texture_area.width,
-                                                ((monitor_area->height - texture_area.y) * coords_scale) / (float)texture_area.height);
+                                                - texture_area.x / (float)texture_area.width,
+                                                - texture_area.y / (float)texture_area.height,
+                                                (monitor_area->width - texture_area.x) / (float)texture_area.width,
+                                                (monitor_area->height - texture_area.y) / (float)texture_area.height);
 
       bare_region_visible = texture_has_alpha (texture);
 
@@ -774,7 +746,6 @@ meta_background_get_texture (MetaBackground         *self,
   cairo_rectangle_int_t monitor_area;
   CoglTexture *texture1, *texture2;
   float monitor_scale;
-  float coords_scale;
 
   g_return_val_if_fail (META_IS_BACKGROUND (self), NULL);
   priv = self->priv;
@@ -808,7 +779,7 @@ meta_background_get_texture (MetaBackground         *self,
     {
       if (texture_area)
         get_texture_area (self, &monitor_area, monitor_scale,
-                          priv->wallpaper_texture, texture_area, &coords_scale);
+                          priv->wallpaper_texture, texture_area);
       if (wrap_mode)
         *wrap_mode = COGL_PIPELINE_WRAP_MODE_REPEAT;
       return priv->wallpaper_texture;
