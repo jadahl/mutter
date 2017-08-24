@@ -411,12 +411,12 @@ get_texture_area (MetaBackground          *self,
       meta_screen_get_size (priv->screen, &screen_width, &screen_height);
 
       /* Start off by centering a tile in the middle of the
-       * total screen area.
+       * total screen area taking care of the monitor scaling.
        */
-      image_area.x = (screen_width - texture_width) / 2.0;
-      image_area.y = (screen_height - texture_height) / 2.0;
-      image_area.width = texture_width;
-      image_area.height = texture_height;
+      image_area.x = ((screen_width - texture_width) / 2.0) * monitor_scale;
+      image_area.y = ((screen_height - texture_height) / 2.0) * monitor_scale;
+      image_area.width = texture_width * monitor_scale;
+      image_area.height = texture_height * monitor_scale;
 
       /* Translate into the coordinate system of the particular monitor */
       image_area.x -= monitor_rect->x;
