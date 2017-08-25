@@ -413,10 +413,10 @@ get_texture_area (MetaBackground          *self,
       /* Start off by centering a tile in the middle of the
        * total screen area taking care of the monitor scaling.
        */
-      image_area.x = ((screen_width - texture_width) / 2.0) * monitor_scale;
-      image_area.y = ((screen_height - texture_height) / 2.0) * monitor_scale;
-      image_area.width = texture_width * monitor_scale;
-      image_area.height = texture_height * monitor_scale;
+      image_area.x = (screen_width - texture_width) / 2.0;
+      image_area.y = (screen_height - texture_height) / 2.0;
+      image_area.width = texture_width;
+      image_area.height = texture_height;
 
       /* Translate into the coordinate system of the particular monitor */
       image_area.x -= monitor_rect->x;
@@ -755,10 +755,10 @@ meta_background_get_texture (MetaBackground         *self,
 
   meta_screen_get_monitor_geometry (priv->screen, monitor_index, &geometry);
   monitor_scale = meta_screen_get_monitor_scale (priv->screen, monitor_index);
-  monitor_area.x = geometry.x * monitor_scale;
-  monitor_area.y = geometry.y * monitor_scale;
-  monitor_area.width = geometry.width * monitor_scale;
-  monitor_area.height = geometry.height * monitor_scale;
+  monitor_area.x = geometry.x;
+  monitor_area.y = geometry.y;
+  monitor_area.width = geometry.width;
+  monitor_area.height = geometry.height;
 
   texture1 = priv->background_image1 ? meta_background_image_get_texture (priv->background_image1) : NULL;
   texture2 = priv->background_image2 ? meta_background_image_get_texture (priv->background_image2) : NULL;
@@ -789,6 +789,14 @@ meta_background_get_texture (MetaBackground         *self,
     {
       CoglError *catch_error = NULL;
       gboolean bare_region_visible = FALSE;
+
+      if (priv->style != G_DESKTOP_BACKGROUND_STYLE_WALLPAPER)
+      {
+        monitor_area.x *= monitor_scale;
+        monitor_area.y *= monitor_scale;
+        monitor_area.width *= monitor_scale;
+        monitor_area.height *= monitor_scale;
+      }
 
       if (monitor->texture == NULL)
         {
@@ -877,7 +885,7 @@ meta_background_get_texture (MetaBackground         *self,
     }
 
   if (texture_area)
-    set_texture_area_from_monitor_area (&monitor_area, texture_area);
+    set_texture_area_from_monitor_area (&geometry, texture_area);
 
   if (wrap_mode)
     *wrap_mode = COGL_PIPELINE_WRAP_MODE_CLAMP_TO_EDGE;
