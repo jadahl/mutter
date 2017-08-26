@@ -34,7 +34,6 @@
 #include <meta/errors.h>
 #include "edge-resistance.h"
 #include "frame.h"
-#include "screen-private.h"
 #include <meta/prefs.h>
 #include "meta-accel-parse.h"
 
@@ -170,17 +169,14 @@ meta_key_binding_is_builtin (MetaKeyBinding *binding)
  */
 
 static gboolean process_mouse_move_resize_grab (MetaDisplay     *display,
-                                                MetaScreen      *screen,
                                                 MetaWindow      *window,
                                                 ClutterKeyEvent *event);
 
 static gboolean process_keyboard_move_grab (MetaDisplay     *display,
-                                            MetaScreen      *screen,
                                             MetaWindow      *window,
                                             ClutterKeyEvent *event);
 
 static gboolean process_keyboard_resize_grab (MetaDisplay     *display,
-                                              MetaScreen      *screen,
                                               MetaWindow      *window,
                                               ClutterKeyEvent *event);
 
@@ -1582,7 +1578,6 @@ meta_window_ungrab_keys (MetaWindow  *window)
 
 static void
 handle_external_grab (MetaDisplay     *display,
-                      MetaScreen      *screen,
                       MetaWindow      *window,
                       ClutterKeyEvent *event,
                       MetaKeyBinding  *binding,
@@ -1859,21 +1854,20 @@ is_modifier (xkb_keysym_t keysym)
 
 static void
 invoke_handler (MetaDisplay     *display,
-                MetaScreen      *screen,
                 MetaKeyHandler  *handler,
                 MetaWindow      *window,
                 ClutterKeyEvent *event,
                 MetaKeyBinding  *binding)
 {
   if (handler->func)
-    (* handler->func) (display, screen,
+    (* handler->func) (display,
                        handler->flags & META_KEY_BINDING_PER_WINDOW ?
                        window : NULL,
                        event,
                        binding,
                        handler->user_data);
   else
-    (* handler->default_func) (display, screen,
+    (* handler->default_func) (display,
                                handler->flags & META_KEY_BINDING_PER_WINDOW ?
                                window: NULL,
                                event,
@@ -1883,7 +1877,6 @@ invoke_handler (MetaDisplay     *display,
 
 static gboolean
 process_event (MetaDisplay          *display,
-               MetaScreen           *screen,
                MetaWindow           *window,
                ClutterKeyEvent      *event)
 {
@@ -1933,7 +1926,7 @@ process_event (MetaDisplay          *display,
    */
   display->allow_terminal_deactivation = TRUE;
 
-  invoke_handler (display, screen, binding->handler, window, event, binding);
+  invoke_handler (display, binding->handler, window, event, binding);
 
   return TRUE;
 
@@ -1945,7 +1938,6 @@ process_event (MetaDisplay          *display,
 
 static gboolean
 process_overlay_key (MetaDisplay *display,
-                     MetaScreen *screen,
                      ClutterKeyEvent *event,
                      MetaWindow *window)
 {
@@ -1977,7 +1969,7 @@ process_overlay_key (MetaDisplay *display,
            * the event. Other clients with global grabs will be out of
            * luck.
            */
-          if (process_event (display, screen, window, event))
+          if (process_event (display, window, event))
             {
               /* As normally, after we've handled a global key
                * binding, we unfreeze the keyboard but keep the grab
@@ -2062,7 +2054,6 @@ process_overlay_key (MetaDisplay *display,
 
 static gboolean
 process_iso_next_group (MetaDisplay *display,
-                        MetaScreen *screen,
                         ClutterKeyEvent *event)
 {
   MetaKeyBindingManager *keys = &display->key_binding_manager;
@@ -2106,20 +2097,15 @@ process_key_event (MetaDisplay     *display,
   gboolean keep_grab;
   gboolean all_keys_grabbed;
   gboolean handled;
-  MetaScreen *screen;
-
-  /* window may be NULL */
-
-  screen = display->screen;
 
   all_keys_grabbed = window ? window->all_keys_grabbed : FALSE;
   if (!all_keys_grabbed)
     {
-      handled = process_overlay_key (display, screen, event, window);
+      handled = process_overlay_key (display, event, window);
       if (handled)
         return TRUE;
 
-      handled = process_iso_next_group (display, screen, event);
+      handled = process_iso_next_group (display, event);
       if (handled)
         return TRUE;
     }
@@ -2153,20 +2139,20 @@ process_key_event (MetaDisplay     *display,
                 {
                   meta_topic (META_DEBUG_KEYBINDINGS,
                               "Processing event for keyboard move\n");
-                  keep_grab = process_keyboard_move_grab (display, screen, window, event);
+                  keep_grab = process_keyboard_move_grab (display, window, event);
                 }
               else
                 {
                   meta_topic (META_DEBUG_KEYBINDINGS,
                               "Processing event for keyboard resize\n");
-                  keep_grab = process_keyboard_resize_grab (display, screen, window, event);
+                  keep_grab = process_keyboard_resize_grab (display, window, event);
                 }
             }
           else
             {
               meta_topic (META_DEBUG_KEYBINDINGS,
                           "Processing event for mouse-only move/resize\n");
-              keep_grab = process_mouse_move_resize_grab (display, screen, window, event);
+              keep_grab = process_mouse_move_resize_grab (display, window, event);
             }
         }
       if (!keep_grab)
@@ -2176,7 +2162,7 @@ process_key_event (MetaDisplay     *display,
     }
 
   /* Do the normal keybindings */
-  return process_event (display, screen, window, event);
+  return process_event (display, window, event);
 }
 
 /* Handle a key event. May be called recursively: some key events cause
@@ -2218,7 +2204,6 @@ meta_keybindings_process_event (MetaDisplay        *display,
 
 static gboolean
 process_mouse_move_resize_grab (MetaDisplay     *display,
-                                MetaScreen      *screen,
                                 MetaWindow      *window,
                                 ClutterKeyEvent *event)
 {
@@ -2267,7 +2252,6 @@ process_mouse_move_resize_grab (MetaDisplay     *display,
 
 static gboolean
 process_keyboard_move_grab (MetaDisplay     *display,
-                            MetaScreen      *screen,
                             MetaWindow      *window,
                             ClutterKeyEvent *event)
 {
@@ -2384,7 +2368,6 @@ process_keyboard_move_grab (MetaDisplay     *display,
 
 static gboolean
 process_keyboard_resize_grab_op_change (MetaDisplay     *display,
-                                        MetaScreen      *screen,
                                         MetaWindow      *window,
                                         ClutterKeyEvent *event)
 {
@@ -2505,7 +2488,6 @@ process_keyboard_resize_grab_op_change (MetaDisplay     *display,
 
 static gboolean
 process_keyboard_resize_grab (MetaDisplay     *display,
-                              MetaScreen      *screen,
                               MetaWindow      *window,
                               ClutterKeyEvent *event)
 {
@@ -2540,7 +2522,7 @@ process_keyboard_resize_grab (MetaDisplay     *display,
       return FALSE;
     }
 
-  if (process_keyboard_resize_grab_op_change (display, screen, window, event))
+  if (process_keyboard_resize_grab_op_change (display, window, event))
     return TRUE;
 
   width = window->rect.width;
@@ -2735,7 +2717,6 @@ process_keyboard_resize_grab (MetaDisplay     *display,
 
 static void
 handle_switch_to_last_workspace (MetaDisplay     *display,
-                                 MetaScreen      *screen,
                                  MetaWindow      *event_window,
                                  ClutterKeyEvent *event,
                                  MetaKeyBinding *binding,
@@ -2748,7 +2729,6 @@ handle_switch_to_last_workspace (MetaDisplay     *display,
 
 static void
 handle_switch_to_workspace (MetaDisplay     *display,
-                            MetaScreen      *screen,
                             MetaWindow      *event_window,
                             ClutterKeyEvent *event,
                             MetaKeyBinding  *binding,
@@ -2784,7 +2764,6 @@ handle_switch_to_workspace (MetaDisplay     *display,
 
 static void
 handle_maximize_vertically (MetaDisplay     *display,
-                            MetaScreen      *screen,
                             MetaWindow      *window,
                             ClutterKeyEvent *event,
                             MetaKeyBinding  *binding,
@@ -2801,7 +2780,6 @@ handle_maximize_vertically (MetaDisplay     *display,
 
 static void
 handle_maximize_horizontally (MetaDisplay     *display,
-                              MetaScreen      *screen,
                               MetaWindow      *window,
                               ClutterKeyEvent *event,
                               MetaKeyBinding  *binding,
@@ -2818,7 +2796,6 @@ handle_maximize_horizontally (MetaDisplay     *display,
 
 static void
 handle_always_on_top (MetaDisplay     *display,
-                      MetaScreen      *screen,
                       MetaWindow      *window,
                       ClutterKeyEvent *event,
                       MetaKeyBinding  *binding,
@@ -2832,7 +2809,6 @@ handle_always_on_top (MetaDisplay     *display,
 
 static void
 handle_move_to_corner_backend (MetaDisplay           *display,
-                               MetaScreen            *screen,
                                MetaWindow            *window,
                                int                    gravity)
 {
@@ -2891,95 +2867,86 @@ handle_move_to_corner_backend (MetaDisplay           *display,
 
 static void
 handle_move_to_corner_nw  (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
                            gpointer         dummy)
 {
-  handle_move_to_corner_backend (display, screen, window, NorthWestGravity);
+  handle_move_to_corner_backend (display, window, NorthWestGravity);
 }
 
 static void
 handle_move_to_corner_ne  (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
                            gpointer         dummy)
 {
-  handle_move_to_corner_backend (display, screen, window, NorthEastGravity);
+  handle_move_to_corner_backend (display, window, NorthEastGravity);
 }
 
 static void
 handle_move_to_corner_sw  (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
                            gpointer         dummy)
 {
-  handle_move_to_corner_backend (display, screen, window, SouthWestGravity);
+  handle_move_to_corner_backend (display, window, SouthWestGravity);
 }
 
 static void
 handle_move_to_corner_se  (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
                            gpointer         dummy)
 {
-  handle_move_to_corner_backend (display, screen, window, SouthEastGravity);
+  handle_move_to_corner_backend (display, window, SouthEastGravity);
 }
 
 static void
 handle_move_to_side_n     (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
                            gpointer         dummy)
 {
-  handle_move_to_corner_backend (display, screen, window, NorthGravity);
+  handle_move_to_corner_backend (display, window, NorthGravity);
 }
 
 static void
 handle_move_to_side_s     (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
                            gpointer         dummy)
 {
-  handle_move_to_corner_backend (display, screen, window, SouthGravity);
+  handle_move_to_corner_backend (display, window, SouthGravity);
 }
 
 static void
 handle_move_to_side_e     (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
                            gpointer         dummy)
 {
-  handle_move_to_corner_backend (display, screen, window, EastGravity);
+  handle_move_to_corner_backend (display, window, EastGravity);
 }
 
 static void
 handle_move_to_side_w     (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
                            gpointer         dummy)
 {
-  handle_move_to_corner_backend (display, screen, window, WestGravity);
+  handle_move_to_corner_backend (display, window, WestGravity);
 }
 
 static void
 handle_move_to_center  (MetaDisplay     *display,
-                        MetaScreen      *screen,
                         MetaWindow      *window,
                         ClutterKeyEvent *event,
                         MetaKeyBinding  *binding,
@@ -2999,7 +2966,6 @@ handle_move_to_center  (MetaDisplay     *display,
 
 static void
 handle_show_desktop (MetaDisplay     *display,
-                     MetaScreen      *screen,
                      MetaWindow      *window,
                      ClutterKeyEvent *event,
                      MetaKeyBinding  *binding,
@@ -3018,7 +2984,6 @@ handle_show_desktop (MetaDisplay     *display,
 
 static void
 handle_panel (MetaDisplay     *display,
-              MetaScreen      *screen,
               MetaWindow      *window,
               ClutterKeyEvent *event,
               MetaKeyBinding  *binding,
@@ -3071,7 +3036,6 @@ handle_panel (MetaDisplay     *display,
 
 static void
 handle_activate_window_menu (MetaDisplay     *display,
-                             MetaScreen      *screen,
                              MetaWindow      *event_window,
                              ClutterKeyEvent *event,
                              MetaKeyBinding  *binding,
@@ -3097,7 +3061,6 @@ handle_activate_window_menu (MetaDisplay     *display,
 
 static void
 do_choose_window (MetaDisplay     *display,
-                  MetaScreen      *screen,
                   MetaWindow      *event_window,
                   ClutterKeyEvent *event,
                   MetaKeyBinding  *binding,
@@ -3121,31 +3084,28 @@ do_choose_window (MetaDisplay     *display,
 
 static void
 handle_switch (MetaDisplay     *display,
-               MetaScreen      *screen,
                MetaWindow      *event_window,
                ClutterKeyEvent *event,
                MetaKeyBinding  *binding,
                gpointer         dummy)
 {
   gboolean backwards = meta_key_binding_is_reversed (binding);
-  do_choose_window (display, screen, event_window, event, binding, backwards);
+  do_choose_window (display, event_window, event, binding, backwards);
 }
 
 static void
 handle_cycle (MetaDisplay     *display,
-              MetaScreen      *screen,
               MetaWindow      *event_window,
               ClutterKeyEvent *event,
               MetaKeyBinding  *binding,
               gpointer         dummy)
 {
   gboolean backwards = meta_key_binding_is_reversed (binding);
-  do_choose_window (display, screen, event_window, event, binding, backwards);
+  do_choose_window (display, event_window, event, binding, backwards);
 }
 
 static void
 handle_toggle_fullscreen  (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
@@ -3159,7 +3119,6 @@ handle_toggle_fullscreen  (MetaDisplay     *display,
 
 static void
 handle_toggle_above       (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
@@ -3173,7 +3132,6 @@ handle_toggle_above       (MetaDisplay     *display,
 
 static void
 handle_toggle_tiled (MetaDisplay     *display,
-                     MetaScreen      *screen,
                      MetaWindow      *window,
                      ClutterKeyEvent *event,
                      MetaKeyBinding  *binding,
@@ -3210,7 +3168,6 @@ handle_toggle_tiled (MetaDisplay     *display,
 
 static void
 handle_toggle_maximized    (MetaDisplay     *display,
-                            MetaScreen      *screen,
                             MetaWindow      *window,
                             ClutterKeyEvent *event,
                             MetaKeyBinding  *binding,
@@ -3224,7 +3181,6 @@ handle_toggle_maximized    (MetaDisplay     *display,
 
 static void
 handle_maximize           (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
@@ -3236,7 +3192,6 @@ handle_maximize           (MetaDisplay     *display,
 
 static void
 handle_unmaximize         (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
@@ -3248,7 +3203,6 @@ handle_unmaximize         (MetaDisplay     *display,
 
 static void
 handle_toggle_shaded      (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
@@ -3262,7 +3216,6 @@ handle_toggle_shaded      (MetaDisplay     *display,
 
 static void
 handle_close              (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
@@ -3274,7 +3227,6 @@ handle_close              (MetaDisplay     *display,
 
 static void
 handle_minimize        (MetaDisplay     *display,
-                        MetaScreen      *screen,
                         MetaWindow      *window,
                         ClutterKeyEvent *event,
                         MetaKeyBinding  *binding,
@@ -3286,7 +3238,6 @@ handle_minimize        (MetaDisplay     *display,
 
 static void
 handle_begin_move         (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
@@ -3303,7 +3254,6 @@ handle_begin_move         (MetaDisplay     *display,
 
 static void
 handle_begin_resize       (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
@@ -3320,7 +3270,6 @@ handle_begin_resize       (MetaDisplay     *display,
 
 static void
 handle_toggle_on_all_workspaces (MetaDisplay     *display,
-                                 MetaScreen      *screen,
                                  MetaWindow      *window,
                                  ClutterKeyEvent *event,
                                  MetaKeyBinding  *binding,
@@ -3334,7 +3283,6 @@ handle_toggle_on_all_workspaces (MetaDisplay     *display,
 
 static void
 handle_move_to_workspace_last (MetaDisplay     *display,
-                               MetaScreen      *screen,
                                MetaWindow      *window,
                                ClutterKeyEvent *event,
                                MetaKeyBinding  *binding,
@@ -3354,7 +3302,6 @@ handle_move_to_workspace_last (MetaDisplay     *display,
 
 static void
 handle_move_to_workspace  (MetaDisplay     *display,
-                           MetaScreen      *screen,
                            MetaWindow      *window,
                            ClutterKeyEvent *event,
                            MetaKeyBinding  *binding,
@@ -3409,7 +3356,6 @@ handle_move_to_workspace  (MetaDisplay     *display,
 
 static void
 handle_move_to_monitor (MetaDisplay    *display,
-                        MetaScreen     *screen,
                         MetaWindow     *window,
 		        ClutterKeyEvent *event,
                         MetaKeyBinding *binding,
@@ -3433,7 +3379,6 @@ handle_move_to_monitor (MetaDisplay    *display,
 
 static void
 handle_raise_or_lower (MetaDisplay     *display,
-                       MetaScreen      *screen,
 		       MetaWindow      *window,
 		       ClutterKeyEvent *event,
 		       MetaKeyBinding  *binding,
@@ -3480,7 +3425,6 @@ handle_raise_or_lower (MetaDisplay     *display,
 
 static void
 handle_raise (MetaDisplay     *display,
-              MetaScreen      *screen,
               MetaWindow      *window,
               ClutterKeyEvent *event,
               MetaKeyBinding  *binding,
@@ -3491,7 +3435,6 @@ handle_raise (MetaDisplay     *display,
 
 static void
 handle_lower (MetaDisplay     *display,
-              MetaScreen      *screen,
               MetaWindow      *window,
               ClutterKeyEvent *event,
               MetaKeyBinding  *binding,
@@ -3502,7 +3445,6 @@ handle_lower (MetaDisplay     *display,
 
 static void
 handle_set_spew_mark (MetaDisplay     *display,
-                      MetaScreen      *screen,
                       MetaWindow      *window,
                       ClutterKeyEvent *event,
                       MetaKeyBinding  *binding,
@@ -3514,7 +3456,6 @@ handle_set_spew_mark (MetaDisplay     *display,
 #ifdef HAVE_NATIVE_BACKEND
 static void
 handle_switch_vt (MetaDisplay     *display,
-                  MetaScreen      *screen,
                   MetaWindow      *window,
                   ClutterKeyEvent *event,
                   MetaKeyBinding  *binding,
@@ -3533,7 +3474,6 @@ handle_switch_vt (MetaDisplay     *display,
 
 static void
 handle_switch_monitor (MetaDisplay    *display,
-                       MetaScreen     *screen,
                        MetaWindow     *window,
                        ClutterKeyEvent *event,
                        MetaKeyBinding *binding,
@@ -3554,7 +3494,6 @@ handle_switch_monitor (MetaDisplay    *display,
 
 static void
 handle_rotate_monitor (MetaDisplay    *display,
-                       MetaScreen     *screen,
                        MetaWindow     *window,
                        ClutterKeyEvent *event,
                        MetaKeyBinding *binding,
@@ -3569,7 +3508,6 @@ handle_rotate_monitor (MetaDisplay    *display,
 
 static void
 handle_restore_shortcuts (MetaDisplay     *display,
-                          MetaScreen      *screen,
                           MetaWindow      *window,
                           ClutterKeyEvent *event,
                           MetaKeyBinding  *binding,
