@@ -5603,13 +5603,17 @@ meta_window_recalc_features (MetaWindow *window)
   if (!window->has_resize_func)
     {
       window->has_maximize_func = FALSE;
+      MetaRectangle display_rect = { 0, 0 };
+
+      meta_display_get_size (window->display, &display_rect.width,
+                             &display_rect.height);
 
       /* don't allow fullscreen if we can't resize, unless the size
        * is entire screen size (kind of broken, because we
        * actually fullscreen to monitor size not screen size)
        */
-      if (window->size_hints.min_width == window->display->rect.width &&
-          window->size_hints.min_height == window->display->rect.height)
+      if (window->size_hints.min_width == display_rect.width &&
+          window->size_hints.min_height == display_rect.height)
         ; /* leave fullscreen available */
       else
         window->has_fullscreen_func = FALSE;
@@ -6496,9 +6500,13 @@ meta_window_get_work_area_all_monitors (MetaWindow    *window,
                                         MetaRectangle *area)
 {
   GList *tmp;
+  MetaRectangle display_rect = { 0, 0 };
+
+  meta_display_get_size (window->display, &display_rect.width,
+                         &display_rect.height);
 
   /* Initialize to the whole display */
-  *area = window->display->rect;
+  *area = display_rect;
 
   tmp = meta_window_get_workspaces (window);
   while (tmp != NULL)
@@ -6716,10 +6724,12 @@ warp_grab_pointer (MetaWindow          *window,
                    int                 *x,
                    int                 *y)
 {
-  MetaRectangle  rect;
+  MetaRectangle  display_rect = { 0 , 0 }, rect;
   MetaDisplay   *display;
 
   display = window->display;
+  meta_display_get_size (display, &display_rect.width,
+                         &display_rect.height);
 
   /* We may not have done begin_grab_op yet, i.e. may not be in a grab
    */
@@ -6744,8 +6754,8 @@ warp_grab_pointer (MetaWindow          *window,
   *y += rect.y;
 
   /* Avoid weird bouncing at the screen edge; see bug 154706 */
-  *x = CLAMP (*x, 0, window->display->rect.width-1);
-  *y = CLAMP (*y, 0, window->display->rect.height-1);
+  *x = CLAMP (*x, 0, display_rect.width-1);
+  *y = CLAMP (*y, 0, display_rect.height-1);
 
   meta_error_trap_push (display->x11_display);
 
