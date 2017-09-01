@@ -4912,5 +4912,5 @@ _clutter_stage_peek_stage_views (ClutterStage *stage)
 void
 clutter_stage_update_resource_scales (ClutterStage *stage)
 {
-  _clutter_actor_update_resource_scales (CLUTTER_ACTOR (stage));
+  _clutter_actor_queue_update_resource_scale_recursive (CLUTTER_ACTOR (stage));
 }

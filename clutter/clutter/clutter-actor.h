@@ -211,7 +211,6 @@ struct _ClutterActor
  * @paint_node: virtual function for creating paint nodes and attaching
  *   them to the render tree
  * @touch_event: signal class closure for #ClutterActor::touch-event
- * @sync_resource_scale: signal class closure for #ClutterActor::sync-resource-scale
  *
  * Base class for actors.
  */
@@ -297,11 +296,9 @@ struct _ClutterActorClass
   gboolean (* touch_event)          (ClutterActor         *self,
                                      ClutterTouchEvent    *event);
 
-  void (* sync_resource_scale)      (ClutterActor         *self);
-
   /*< private >*/
   /* padding for future expansion */
-  gpointer _padding_dummy[25];
+  gpointer _padding_dummy[26];
 };
 
 /**

@@ -1007,7 +1007,6 @@ enum
   TRANSITIONS_COMPLETED,
   TOUCH_EVENT,
   TRANSITION_STOPPED,
-  SYNC_RESOURCE_SCALE,
 
   LAST_SIGNAL
 };
@@ -8537,22 +8536,6 @@ clutter_actor_class_init (ClutterActorClass *klass)
 		  _clutter_marshal_BOOLEAN__BOXED,
 		  G_TYPE_BOOLEAN, 1,
 		  CLUTTER_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
-
-  /**
-   * ClutterActor::sync-resource-scale:
-   * @actor: a #ClutterActor
-   *
-   * The ::sync-resource-scale signal is emitted when the paint scale (see
-   * clutter_actor_get_resource_scale()) might have changed.
-   */
-  actor_signals[SYNC_RESOURCE_SCALE] =
-    g_signal_new (I_("sync-resource-scale"),
-                  G_TYPE_FROM_CLASS (object_class),
-                  G_SIGNAL_RUN_LAST,
-                  G_STRUCT_OFFSET (ClutterActorClass, sync_resource_scale),
-                  NULL, NULL,
-                  _clutter_marshal_VOID__VOID,
-                  G_TYPE_NONE, 0);
 }
 
 static void
@@ -17828,18 +17811,23 @@ _clutter_actor_compute_resource_scale (ClutterActor *self,
   return TRUE;
 }
 
-void
-_clutter_actor_update_resource_scales (ClutterActor *self)
+static ClutterActorTraverseVisitFlags
+queue_update_resource_scale_cb (ClutterActor *actor,
+                                int depth,
+                                void *user_data)
 {
-  ClutterActor *child;
+  actor->priv->needs_compute_resource_scale = TRUE;
+  return CLUTTER_ACTOR_TRAVERSE_VISIT_CONTINUE;
+}
 
-  self->priv->needs_compute_resource_scale = TRUE;
-  g_signal_emit (self, actor_signals[SYNC_RESOURCE_SCALE], 0);
-
-  for (child = clutter_actor_get_first_child (self);
-       child != NULL;
-       child = clutter_actor_get_next_sibling (child))
-    _clutter_actor_update_resource_scales (child);
+void
+_clutter_actor_queue_update_resource_scale_recursive (ClutterActor *self)
+{
+  _clutter_actor_traverse (self,
+                           CLUTTER_ACTOR_TRAVERSE_DEPTH_FIRST,
+                           queue_update_resource_scale_cb,
+                           NULL,
+                           NULL);
 }
 
 static gboolean
