@@ -1096,6 +1096,7 @@ static void clutter_actor_set_child_transform_internal (ClutterActor        *sel
 
 static void     clutter_actor_realize_internal          (ClutterActor *self);
 static void     clutter_actor_unrealize_internal        (ClutterActor *self);
+static gboolean clutter_actor_update_resource_scale     (ClutterActor *self);
 static void     clutter_actor_ensure_resource_scale     (ClutterActor *self);
 
 /* Helper macro which translates by the anchor coord, applies the
@@ -5641,7 +5642,9 @@ clutter_actor_get_property (GObject    *object,
       break;
 
     case PROP_RESOURCE_SCALE:
-      clutter_actor_ensure_resource_scale (actor);
+      if (priv->needs_compute_resource_scale)
+        clutter_actor_update_resource_scale (actor);
+
       g_value_set_float (value, priv->resource_scale);
       break;
 
@@ -17845,15 +17848,14 @@ clutter_actor_update_resource_scale (ClutterActor *self)
 
   g_return_val_if_fail (priv->needs_compute_resource_scale, FALSE);
 
-  if (!_clutter_actor_compute_resource_scale (self, &resource_scale))
-    {
-      priv->resource_scale = -1.0f;
-      return FALSE;
-    }
-
   old_resource_scale = priv->resource_scale;
-  priv->resource_scale = resource_scale;
-  priv->needs_compute_resource_scale = FALSE;
+  priv->resource_scale = -1.0f;
+
+  if (_clutter_actor_compute_resource_scale (self, &resource_scale))
+    {
+      priv->resource_scale = resource_scale;
+      priv->needs_compute_resource_scale = FALSE;
+    }
 
   return old_resource_scale != resource_scale;
 }
@@ -17862,15 +17864,11 @@ static void
 clutter_actor_ensure_resource_scale (ClutterActor *self)
 {
   ClutterActorPrivate *priv = self->priv;
-  float old_resource_scale;
 
   if (!priv->needs_compute_resource_scale)
     return;
 
-  old_resource_scale = priv->resource_scale;
-  clutter_actor_update_resource_scale (self);
-
-  if (priv->resource_scale != old_resource_scale)
+  if (clutter_actor_update_resource_scale (self))
     g_object_notify_by_pspec (G_OBJECT (self), obj_props[PROP_RESOURCE_SCALE]);
 }
 
