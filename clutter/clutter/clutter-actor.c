@@ -2736,6 +2736,16 @@ clutter_actor_real_queue_redraw (ClutterActor *self,
     }
 }
 
+static inline gboolean
+clutter_actor_needs_relayout (ClutterActor *self)
+{
+  ClutterActorPrivate *priv = self->priv;
+
+  return priv->needs_width_request ||
+         priv->needs_height_request ||
+         priv->needs_allocation;
+}
+
 static void
 clutter_actor_real_queue_relayout (ClutterActor *self)
 {
@@ -13013,9 +13023,7 @@ clutter_actor_add_child_internal (ClutterActor              *self,
   /* maintain the invariant that if an actor needs layout,
    * its parents do as well
    */
-  if (child->priv->needs_width_request ||
-      child->priv->needs_height_request ||
-      child->priv->needs_allocation)
+  if (clutter_actor_needs_relayout (child))
     {
       /* we work around the short-circuiting we do
        * in clutter_actor_queue_relayout() since we
