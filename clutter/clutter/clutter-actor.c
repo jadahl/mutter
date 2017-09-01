@@ -3781,6 +3781,7 @@ clutter_actor_paint (ClutterActor *self)
   ClutterPickMode pick_mode;
   gboolean clip_set = FALSE;
   gboolean shader_applied = FALSE;
+  gboolean relayout_was_needed = FALSE;
   ClutterStage *stage;
 
   g_return_if_fail (CLUTTER_IS_ACTOR (self));
@@ -3811,15 +3812,21 @@ clutter_actor_paint (ClutterActor *self)
   if (!CLUTTER_ACTOR_IS_MAPPED (self))
     return;
 
+  /* At paint level we're finally sure about the real actor resource-scale
+   * thus we need to ensure it, in case we have not been able to compute it.
+   * In case this will lead to some repainting, we can ignore this cycle. */
+  relayout_was_needed = clutter_actor_needs_relayout (self);
+  clutter_actor_ensure_resource_scale (self);
+
+  if (!relayout_was_needed && clutter_actor_needs_relayout (self))
+    return;
+
   stage = (ClutterStage *) _clutter_actor_get_stage_internal (self);
 
   /* mark that we are in the paint process */
   CLUTTER_SET_PRIVATE_FLAGS (self, CLUTTER_IN_PAINT);
 
   cogl_push_matrix ();
-
-  /* Here we are sure what and where we're painting, thus the check scale */
-  clutter_actor_ensure_resource_scale (self);
 
   if (priv->enable_model_view_transform)
     {
