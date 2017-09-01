@@ -9540,6 +9540,8 @@ clutter_actor_get_preferred_width (ClutterActor *self,
 
   priv = self->priv;
 
+  CLUTTER_SET_PRIVATE_FLAGS (self, CLUTTER_IN_PREF_WIDTH);
+
   info = _clutter_actor_get_layout_info_or_defaults (self);
 
   /* we shortcircuit the case of a fixed size set using set_width() */
@@ -9645,6 +9647,8 @@ clutter_actor_get_preferred_width (ClutterActor *self,
 
   if (natural_width_p)
     *natural_width_p = request_natural_width;
+
+  CLUTTER_UNSET_PRIVATE_FLAGS (self, CLUTTER_IN_PREF_WIDTH);
 }
 
 /**
@@ -9683,6 +9687,8 @@ clutter_actor_get_preferred_height (ClutterActor *self,
   g_return_if_fail (CLUTTER_IS_ACTOR (self));
 
   priv = self->priv;
+
+  CLUTTER_SET_PRIVATE_FLAGS (self, CLUTTER_IN_PREF_HEIGHT);
 
   info = _clutter_actor_get_layout_info_or_defaults (self);
 
@@ -9788,6 +9794,8 @@ clutter_actor_get_preferred_height (ClutterActor *self,
 
   if (natural_height_p)
     *natural_height_p = request_natural_height;
+
+  CLUTTER_UNSET_PRIVATE_FLAGS (self, CLUTTER_IN_PREF_HEIGHT);
 }
 
 /**
@@ -17773,7 +17781,7 @@ _clutter_actor_compute_resource_scale (ClutterActor *self,
   ClutterRect bounding_rect;
   ClutterActorPrivate *priv = self->priv;
 
-  if (!clutter_actor_is_mapped (self))
+  if (!clutter_actor_is_mapped (self) || CLUTTER_ACTOR_IN_PREF_SIZE (self))
     return FALSE;
 
   clutter_actor_get_transformed_position (self,
