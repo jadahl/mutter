@@ -1096,7 +1096,7 @@ static void clutter_actor_set_child_transform_internal (ClutterActor        *sel
 
 static void     clutter_actor_realize_internal          (ClutterActor *self);
 static void     clutter_actor_unrealize_internal        (ClutterActor *self);
-static void     clutter_actor_sync_resource_scale       (ClutterActor *self);
+static void     clutter_actor_ensure_resource_scale     (ClutterActor *self);
 
 /* Helper macro which translates by the anchor coord, applies the
    given transformation and then translates back */
@@ -1520,6 +1520,7 @@ clutter_actor_real_map (ClutterActor *self)
   /* notify on parent mapped before potentially mapping
    * children, so apps see a top-down notification.
    */
+  clutter_actor_ensure_resource_scale (self);
   g_object_notify_by_pspec (G_OBJECT (self), obj_props[PROP_MAPPED]);
 
   for (iter = self->priv->first_child;
@@ -1610,6 +1611,7 @@ clutter_actor_real_unmap (ClutterActor *self)
   /* notify on parent mapped after potentially unmapping
    * children, so apps see a bottom-up notification.
    */
+  clutter_actor_ensure_resource_scale (self);
   g_object_notify_by_pspec (G_OBJECT (self), obj_props[PROP_MAPPED]);
 
   /* relinquish keyboard focus if we were unmapped while owning it */
@@ -2514,7 +2516,7 @@ clutter_actor_set_allocation_internal (ClutterActor           *self,
         }
 
       priv->needs_compute_resource_scale = TRUE;
-      clutter_actor_sync_resource_scale (self);
+      clutter_actor_ensure_resource_scale (self);
 
       retval = TRUE;
     }
@@ -3806,6 +3808,9 @@ clutter_actor_paint (ClutterActor *self)
 
   cogl_push_matrix ();
 
+  /* Here we are sure what and where we're painting, thus the check scale */
+  clutter_actor_ensure_resource_scale (self);
+
   if (priv->enable_model_view_transform)
     {
       CoglMatrix matrix;
@@ -4309,7 +4314,10 @@ clutter_actor_remove_child_internal (ClutterActor                 *self,
 
   /* clutter_actor_reparent() will emit ::parent-set for us */
   if (emit_parent_set && !CLUTTER_ACTOR_IN_REPARENT (child))
-    g_signal_emit (child, actor_signals[PARENT_SET], 0, self);
+    {
+      clutter_actor_ensure_resource_scale (child);
+      g_signal_emit (child, actor_signals[PARENT_SET], 0, self);
+    }
 
   /* if the child was mapped then we need to relayout ourselves to account
    * for the removed child
@@ -5633,7 +5641,7 @@ clutter_actor_get_property (GObject    *object,
       break;
 
     case PROP_RESOURCE_SCALE:
-      clutter_actor_sync_resource_scale (actor);
+      clutter_actor_ensure_resource_scale (actor);
       g_value_set_float (value, priv->resource_scale);
       break;
 
@@ -10135,6 +10143,11 @@ clutter_actor_allocate (ClutterActor           *self,
       return;
     }
 
+  if (stage_allocation_changed)
+    priv->needs_compute_resource_scale = TRUE;
+
+  clutter_actor_ensure_resource_scale (self);
+
   if (!stage_allocation_changed)
     {
       /* If the actor didn't move but needs_allocation is set, we just
@@ -12978,7 +12991,10 @@ clutter_actor_add_child_internal (ClutterActor              *self,
 
   /* clutter_actor_reparent() will emit ::parent-set for us */
   if (emit_parent_set && !CLUTTER_ACTOR_IN_REPARENT (child))
-    g_signal_emit (child, actor_signals[PARENT_SET], 0, NULL);
+    {
+      clutter_actor_ensure_resource_scale (child);
+      g_signal_emit (child, actor_signals[PARENT_SET], 0, NULL);
+    }
 
   if (check_state)
     {
@@ -13579,11 +13595,11 @@ clutter_actor_reparent (ClutterActor *self,
                                           insert_child_at_depth,
                                           NULL);
 
+      /* We need to recompute the resource scale now */
+      clutter_actor_ensure_resource_scale (self);
+
       /* we emit the ::parent-set signal once */
       g_signal_emit (self, actor_signals[PARENT_SET], 0, old_parent);
-
-      /* We need to recompute the resource scale now */
-      clutter_actor_sync_resource_scale (self);
 
       CLUTTER_UNSET_PRIVATE_FLAGS (self, CLUTTER_IN_REPARENT);
 
@@ -17843,7 +17859,7 @@ clutter_actor_update_resource_scale (ClutterActor *self)
 }
 
 static void
-clutter_actor_sync_resource_scale (ClutterActor *self)
+clutter_actor_ensure_resource_scale (ClutterActor *self)
 {
   ClutterActorPrivate *priv = self->priv;
   float old_resource_scale;
