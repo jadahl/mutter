@@ -17800,8 +17800,12 @@ _clutter_actor_compute_resource_scale (ClutterActor *self,
   ClutterRect bounding_rect;
   ClutterActorPrivate *priv = self->priv;
 
-  if (!clutter_actor_is_mapped (self) || CLUTTER_ACTOR_IN_PREF_SIZE (self))
-    return FALSE;
+  if (CLUTTER_ACTOR_IN_DESTRUCTION (self) ||
+      CLUTTER_ACTOR_IN_PREF_SIZE (self) ||
+      !clutter_actor_is_mapped (self))
+    {
+      return FALSE;
+    }
 
   clutter_actor_get_transformed_position (self,
                                           &bounding_rect.origin.x,
