@@ -947,14 +947,18 @@ clutter_text_coords_to_position (ClutterText *self,
   gint index_;
   gint px, py;
   gint trailing;
+  gfloat resource_scale;
 
   g_return_val_if_fail (CLUTTER_IS_TEXT (self), 0);
+
+  if (!clutter_actor_get_resource_scale (CLUTTER_ACTOR (self), &resource_scale))
+    return 0;
 
   /* Take any offset due to scrolling into account, and normalize
    * the coordinates to PangoScale units
    */
-  px = (x - self->priv->text_x) * PANGO_SCALE;
-  py = (y - self->priv->text_y) * PANGO_SCALE;
+  px = (x - self->priv->text_x) * PANGO_SCALE * resource_scale;
+  py = (y - self->priv->text_y) * PANGO_SCALE * resource_scale;
 
   pango_layout_xy_to_index (clutter_text_get_layout (self),
                             px, py,
