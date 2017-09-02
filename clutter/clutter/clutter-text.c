@@ -963,26 +963,12 @@ clutter_text_coords_to_position (ClutterText *self,
   return index_ + trailing;
 }
 
-/**
- * clutter_text_position_to_coords:
- * @self: a #ClutterText
- * @position: position in characters
- * @x: (out): return location for the X coordinate, or %NULL
- * @y: (out): return location for the Y coordinate, or %NULL
- * @line_height: (out): return location for the line height, or %NULL
- *
- * Retrieves the coordinates of the given @position.
- *
- * Return value: %TRUE if the conversion was successful
- *
- * Since: 1.0
- */
 gboolean
-clutter_text_position_to_coords (ClutterText *self,
-                                 gint         position,
-                                 gfloat      *x,
-                                 gfloat      *y,
-                                 gfloat      *line_height)
+clutter_text_position_to_coords_internal (ClutterText *self,
+                                          gint         position,
+                                          gfloat      *x,
+                                          gfloat      *y,
+                                          gfloat      *line_height)
 {
   ClutterTextPrivate *priv;
   PangoRectangle rect;
@@ -1048,7 +1034,7 @@ clutter_text_position_to_coords (ClutterText *self,
 
   if (x)
     {
-      *x = (gfloat) rect.x / 1024.0f;
+      *x = (gfloat) rect.x / PANGO_SCALE;
 
       /* Take any offset due to scrolling into account */
       if (priv->single_line_mode)
@@ -1056,16 +1042,61 @@ clutter_text_position_to_coords (ClutterText *self,
     }
 
   if (y)
-    *y = (gfloat) rect.y / 1024.0f;
+    *y = (gfloat) rect.y / PANGO_SCALE;
 
   if (line_height)
-    *line_height = (gfloat) rect.height / 1024.0f;
+    *line_height = (gfloat) rect.height / PANGO_SCALE;
 
   return TRUE;
 }
 
+/**
+ * clutter_text_position_to_coords:
+ * @self: a #ClutterText
+ * @position: position in characters
+ * @x: (out): return location for the X coordinate, or %NULL
+ * @y: (out): return location for the Y coordinate, or %NULL
+ * @line_height: (out): return location for the line height, or %NULL
+ *
+ * Retrieves the coordinates of the given @position.
+ *
+ * Return value: %TRUE if the conversion was successful
+ *
+ * Since: 1.0
+ */
+gboolean
+clutter_text_position_to_coords (ClutterText *self,
+                                 gint         position,
+                                 gfloat      *x,
+                                 gfloat      *y,
+                                 gfloat      *line_height)
+{
+  gfloat resource_scale;
+  gboolean ret;
+
+  g_return_val_if_fail (CLUTTER_IS_TEXT (self), FALSE);
+
+  if (!clutter_actor_get_resource_scale (CLUTTER_ACTOR (self), &resource_scale))
+    return FALSE;
+
+  ret = clutter_text_position_to_coords_internal (self, position,
+                                                  x, y, line_height);
+
+  if (x)
+    *x /= resource_scale;
+
+  if (y)
+    *y /= resource_scale;
+
+  if (line_height)
+    *line_height /= resource_scale;
+
+  return ret;
+}
+
 static inline void
-clutter_text_ensure_cursor_position (ClutterText *self)
+clutter_text_ensure_cursor_position (ClutterText *self,
+                                     float scale)
 {
   ClutterTextPrivate *priv = self->priv;
   gfloat x, y, cursor_height;
@@ -1088,15 +1119,15 @@ clutter_text_ensure_cursor_position (ClutterText *self)
                 priv->preedit_set ? priv->preedit_cursor_pos : 0);
 
   x = y = cursor_height = 0;
-  clutter_text_position_to_coords (self, position,
-                                   &x, &y,
-                                   &cursor_height);
+  clutter_text_position_to_coords_internal (self, position,
+                                            &x, &y,
+                                            &cursor_height);
 
   clutter_rect_init (&cursor_rect,
                      x,
-                     y + CURSOR_Y_PADDING,
-                     priv->cursor_size,
-                     cursor_height - 2 * CURSOR_Y_PADDING);
+                     y + CURSOR_Y_PADDING * scale,
+                     priv->cursor_size * scale,
+                     cursor_height - 2 * CURSOR_Y_PADDING * scale);
 
   if (!clutter_rect_equals (&priv->cursor_rect, &cursor_rect))
     {
@@ -1573,6 +1604,7 @@ typedef void (* ClutterTextSelectionFunc) (ClutterText           *text,
 
 static void
 clutter_text_foreach_selection_rectangle (ClutterText              *self,
+                                          float                     scale,
                                           ClutterTextSelectionFunc  func,
                                           gpointer                  user_data)
 {
@@ -1624,9 +1656,9 @@ clutter_text_foreach_selection_rectangle (ClutterText              *self,
                                       &n_ranges);
       pango_layout_line_x_to_index (line, 0, &index_, NULL);
 
-      clutter_text_position_to_coords (self,
-                                       bytes_to_offset (utf8, index_),
-                                       NULL, &y, &height);
+      clutter_text_position_to_coords_internal (self,
+                                                bytes_to_offset (utf8, index_),
+                                                NULL, &y, &height);
 
       box.y1 = y;
       box.y2 = y + height;
@@ -1648,6 +1680,8 @@ clutter_text_foreach_selection_rectangle (ClutterText              *self,
 
           box.x1 = range_x;
           box.x2 = ceilf (range_x + range_width + .5f);
+
+          clutter_actor_box_scale (&box, scale);
 
           func (self, &box, user_data);
         }
@@ -1722,6 +1756,7 @@ selection_paint (ClutterText *self)
                                 paint_opacity * color->alpha / 255);
 
       clutter_text_foreach_selection_rectangle (self,
+                                                1.0f, /* we're in scaled coordinates */
                                                 add_selection_rectangle_to_path,
                                                 selection_path);
 
@@ -2376,7 +2411,7 @@ clutter_text_paint (ClutterActor *self)
   cogl_framebuffer_scale (fb, paint_scale, paint_scale, 1.0f);
 
   if (clutter_text_should_draw_cursor (text))
-    clutter_text_ensure_cursor_position (text);
+    clutter_text_ensure_cursor_position (text, resource_scale);
 
   if (priv->editable && priv->single_line_mode)
     {
@@ -2448,7 +2483,7 @@ clutter_text_paint (ClutterActor *self)
       priv->text_x = text_x;
       priv->text_y = text_y;
 
-      clutter_text_ensure_cursor_position (text);
+      clutter_text_ensure_cursor_position (text, resource_scale);
     }
 
   real_opacity = clutter_actor_get_paint_opacity (self)
@@ -2498,26 +2533,30 @@ add_selection_to_paint_volume (ClutterText           *text,
 
 static void
 clutter_text_get_paint_volume_for_cursor (ClutterText        *text,
+                                          float               resource_scale,
                                           ClutterPaintVolume *volume)
 {
   ClutterTextPrivate *priv = text->priv;
   ClutterVertex origin;
 
-  clutter_text_ensure_cursor_position (text);
+  clutter_text_ensure_cursor_position (text, resource_scale);
 
   if (priv->position == priv->selection_bound)
     {
-      origin.x = priv->cursor_rect.origin.x;
-      origin.y = priv->cursor_rect.origin.y;
+      float width = priv->cursor_rect.size.width / resource_scale;
+      float height = priv->cursor_rect.size.height / resource_scale;
+      origin.x = priv->cursor_rect.origin.x / resource_scale;
+      origin.y = priv->cursor_rect.origin.y / resource_scale;
       origin.z = 0;
 
       clutter_paint_volume_set_origin (volume, &origin);
-      clutter_paint_volume_set_width (volume, priv->cursor_rect.size.width);
-      clutter_paint_volume_set_height (volume, priv->cursor_rect.size.height);
+      clutter_paint_volume_set_width (volume, width);
+      clutter_paint_volume_set_height (volume, height);
     }
   else
     {
       clutter_text_foreach_selection_rectangle (text,
+                                                1.0f / resource_scale,
                                                 add_selection_to_paint_volume,
                                                 volume);
     }
@@ -2540,6 +2579,7 @@ clutter_text_get_paint_volume (ClutterActor       *self,
       PangoLayout *layout;
       PangoRectangle ink_rect;
       ClutterVertex origin;
+      float resource_scale;
 
       /* If the text is single line editable then it gets clipped to
          the allocation anyway so we can just use that */
@@ -2554,19 +2594,24 @@ clutter_text_get_paint_volume (ClutterActor       *self,
       if (!clutter_actor_has_allocation (self))
         return FALSE;
 
+      if (!clutter_actor_get_resource_scale (self, &resource_scale))
+        return FALSE;
+
       _clutter_paint_volume_init_static (&priv->paint_volume, self);
 
       layout = clutter_text_get_layout (text);
       pango_layout_get_extents (layout, &ink_rect, NULL);
 
-      origin.x = ink_rect.x / (float) PANGO_SCALE;
-      origin.y = ink_rect.y / (float) PANGO_SCALE;
+      origin.x = ink_rect.x / ((float) PANGO_SCALE * resource_scale);
+      origin.y = ink_rect.y / ((float) PANGO_SCALE * resource_scale);
       origin.z = 0;
       clutter_paint_volume_set_origin (&priv->paint_volume, &origin);
       clutter_paint_volume_set_width (&priv->paint_volume,
-                                      ink_rect.width / (float) PANGO_SCALE);
+                                      (ink_rect.width /
+                                       ((float) PANGO_SCALE * resource_scale)));
       clutter_paint_volume_set_height (&priv->paint_volume,
-                                       ink_rect.height / (float) PANGO_SCALE);
+                                       ink_rect.height /
+                                       ((float) PANGO_SCALE * resource_scale));
 
       /* If the cursor is visible then that will likely be drawn
          outside of the ink rectangle so we should merge that in */
@@ -2576,7 +2621,8 @@ clutter_text_get_paint_volume (ClutterActor       *self,
 
           _clutter_paint_volume_init_static (&cursor_paint_volume, self);
 
-          clutter_text_get_paint_volume_for_cursor (text, &cursor_paint_volume);
+          clutter_text_get_paint_volume_for_cursor (text, resource_scale,
+                                                    &cursor_paint_volume);
 
           clutter_paint_volume_union (&priv->paint_volume,
                                       &cursor_paint_volume);
