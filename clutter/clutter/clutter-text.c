@@ -176,6 +176,9 @@ struct _ClutterTextPrivate
   /* Signal handler for when the :text-direction changes */
   guint direction_changed_id;
 
+  /* Signal handler for when the :resource-scale changes */
+  guint resource_scale_changed_id;
+
   /* bitfields */
   guint alignment               : 2;
   guint wrap                    : 1;
@@ -486,6 +489,34 @@ clutter_text_ensure_effective_attributes (ClutterText *self)
     }
 }
 
+static inline void
+ensure_text_scale_pango_attributes (ClutterText    *self,
+                                    PangoAttrList **attributes)
+{
+  float resource_scale;
+
+  g_return_if_fail (attributes != NULL);
+
+  if (!clutter_actor_get_resource_scale (CLUTTER_ACTOR (self), &resource_scale))
+    return;
+
+  if (resource_scale == 1.0f)
+    return;
+
+  if (*attributes)
+    {
+      PangoAttrList *old_attributes = *attributes;
+      *attributes = pango_attr_list_copy (old_attributes);
+      pango_attr_list_unref (old_attributes);
+    }
+  else
+    {
+      *attributes = pango_attr_list_new ();
+    }
+
+  pango_attr_list_change (*attributes, pango_attr_scale_new (resource_scale));
+}
+
 static PangoLayout *
 clutter_text_create_layout_no_cache (ClutterText       *text,
 				     gint               width,
@@ -524,6 +555,7 @@ clutter_text_create_layout_no_cache (ClutterText       *text,
                                   cursor_index,
                                   strlen (priv->preedit_str));
 
+          ensure_text_scale_pango_attributes (text, &tmp_attrs);
           pango_layout_set_attributes (layout, tmp_attrs);
         }
 
@@ -567,6 +599,7 @@ clutter_text_create_layout_no_cache (ClutterText       *text,
   /* This will merge the markup attributes and the attributes
    * property if needed */
   clutter_text_ensure_effective_attributes (text);
+  ensure_text_scale_pango_attributes (text, &priv->effective_attrs);
 
   if (priv->effective_attrs != NULL)
     pango_layout_set_attributes (layout, priv->effective_attrs);
@@ -691,6 +724,18 @@ clutter_text_direction_changed_cb (GObject    *gobject,
   /* no need to queue a relayout: set_text_direction() will do that for us */
 }
 
+static void
+clutter_text_resource_scale_changed_cb (GObject    *gobject,
+                                        GParamSpec *pspec)
+{
+  ClutterText *self = CLUTTER_TEXT (gobject);
+  ClutterTextPrivate *priv = self->priv;
+
+  g_clear_pointer (&priv->effective_attrs, pango_attr_list_unref);
+  clutter_text_dirty_cache (self);
+  clutter_actor_queue_relayout (CLUTTER_ACTOR (gobject));
+}
+
 /*
  * clutter_text_create_layout:
  * @text: a #ClutterText
@@ -710,10 +755,20 @@ clutter_text_create_layout (ClutterText *text,
   ClutterTextPrivate *priv = text->priv;
   LayoutCache *oldest_cache = priv->cached_layouts;
   gboolean found_free_cache = FALSE;
+  float resource_scale;
   gint width = -1;
   gint height = -1;
   PangoEllipsizeMode ellipsize = PANGO_ELLIPSIZE_NONE;
   int i;
+
+  if (clutter_actor_get_resource_scale (CLUTTER_ACTOR (text), &resource_scale))
+    {
+      if (allocation_width > 0)
+        allocation_width *= resource_scale;
+
+      if (allocation_height > 0)
+        allocation_height *= resource_scale;
+    }
 
   /* First determine the width, height, and ellipsize mode that
    * we need for the layout. The ellipsize mode depends on
@@ -758,7 +813,7 @@ clutter_text_create_layout (ClutterText *text,
        !((priv->editable && priv->single_line_mode) ||
          (priv->ellipsize == PANGO_ELLIPSIZE_NONE && !priv->wrap))))
     {
-      width = allocation_width * 1024 + 0.5f;
+      width = allocation_width * PANGO_SCALE + 0.5f;
     }
 
   /* Pango only uses height if ellipsization is enabled, so don't set
@@ -775,7 +830,7 @@ clutter_text_create_layout (ClutterText *text,
       priv->ellipsize != PANGO_ELLIPSIZE_NONE &&
       !priv->single_line_mode)
     {
-      height = allocation_height * 1024 + 0.5f;
+      height = allocation_height * PANGO_SCALE + 0.5f;
     }
 
   /* Search for a cached layout with the same width and keep
@@ -1460,6 +1515,12 @@ clutter_text_dispose (GObject *gobject)
     {
       g_signal_handler_disconnect (self, priv->direction_changed_id);
       priv->direction_changed_id = 0;
+    }
+
+  if (priv->resource_scale_changed_id)
+    {
+      g_signal_handler_disconnect (self, priv->resource_scale_changed_id);
+      priv->resource_scale_changed_id = 0;
     }
 
   if (priv->settings_changed_id)
@@ -2229,6 +2290,10 @@ clutter_text_paint (ClutterActor *self)
   guint n_chars;
   float alloc_width;
   float alloc_height;
+  float resource_scale, paint_scale;
+
+  if (!clutter_actor_get_resource_scale (self, &resource_scale))
+    return;
 
   /* FIXME: this should not be needed, but apparently the text-cache
    * test unit manages to get in a situation where the active frame
@@ -2244,8 +2309,6 @@ clutter_text_paint (ClutterActor *self)
   n_chars = clutter_text_buffer_get_length (get_buffer (text));
 
   clutter_actor_get_allocation_box (self, &alloc);
-  alloc_width = alloc.x2 - alloc.x1;
-  alloc_height = alloc.y2 - alloc.y1;
 
   g_object_get (self, "background-color-set", &bg_color_set, NULL);
   if (bg_color_set)
@@ -2261,7 +2324,9 @@ clutter_text_paint (ClutterActor *self)
                                 bg_color.green,
                                 bg_color.blue,
                                 bg_color.alpha);
-      cogl_rectangle (0, 0, alloc_width, alloc_height);
+      cogl_rectangle (0, 0,
+                      clutter_actor_box_get_width (&alloc),
+                      clutter_actor_box_get_height (&alloc));
     }
 
   /* don't bother painting an empty text actor, unless it's
@@ -2302,6 +2367,13 @@ clutter_text_paint (ClutterActor *self)
           layout = clutter_text_create_layout (text, alloc_width, -1);
         }
     }
+
+  clutter_actor_box_scale (&alloc, resource_scale);
+  clutter_actor_box_get_size (&alloc, &alloc_width, &alloc_height);
+
+  paint_scale = 1.0f / resource_scale;
+  cogl_framebuffer_push_matrix (fb);
+  cogl_framebuffer_scale (fb, paint_scale, paint_scale, 1.0f);
 
   if (clutter_text_should_draw_cursor (text))
     clutter_text_ensure_cursor_position (text);
@@ -2394,6 +2466,8 @@ clutter_text_paint (ClutterActor *self)
   cogl_pango_render_layout (layout, priv->text_x, priv->text_y, &color, 0);
 
   selection_paint (text);
+
+  cogl_framebuffer_pop_matrix (fb);
 
   if (clip_set)
     cogl_framebuffer_pop_clip (fb);
@@ -2530,9 +2604,15 @@ clutter_text_get_preferred_width (ClutterActor *self,
   PangoLayout *layout;
   gint logical_width;
   gfloat layout_width;
+  gfloat resource_scale;
+
+  /* We should not proceed if no resource scale is available, but
+   * not doing this causes some labels not to be regenerated even at
+   * later times. */
+  if (!clutter_actor_get_resource_scale (self, &resource_scale))
+    resource_scale = 1.0f;
 
   layout = clutter_text_create_layout (text, -1, -1);
-
   pango_layout_get_extents (layout, NULL, &logical_rect);
 
   /* the X coordinate of the logical rectangle might be non-zero
@@ -2542,7 +2622,7 @@ clutter_text_get_preferred_width (ClutterActor *self,
   logical_width = logical_rect.x + logical_rect.width;
 
   layout_width = logical_width > 0
-    ? ceilf (logical_width / 1024.0f)
+    ? ceilf (logical_width / (PANGO_SCALE * resource_scale))
     : 1;
 
   if (min_width_p)
@@ -2556,7 +2636,7 @@ clutter_text_get_preferred_width (ClutterActor *self,
   if (natural_width_p)
     {
       if (priv->editable && priv->single_line_mode)
-        *natural_width_p = layout_width + TEXT_PADDING * 2;
+        *natural_width_p = layout_width + TEXT_PADDING * 2 * resource_scale;
       else
         *natural_width_p = layout_width;
     }
@@ -2584,6 +2664,13 @@ clutter_text_get_preferred_height (ClutterActor *self,
       PangoRectangle logical_rect = { 0, };
       gint logical_height;
       gfloat layout_height;
+      gfloat resource_scale;
+
+      /* We should not proceed if no resource scale is available, but
+       * not doing this causes some labels not to be regenerated even at
+       * later times. */
+      if (!clutter_actor_get_resource_scale (self, &resource_scale))
+        resource_scale = 1.0f;
 
       if (priv->single_line_mode)
         for_width = -1;
@@ -2598,7 +2685,7 @@ clutter_text_get_preferred_height (ClutterActor *self,
        * the height accordingly
        */
       logical_height = logical_rect.y + logical_rect.height;
-      layout_height = ceilf (logical_height / 1024.0f);
+      layout_height = ceilf (logical_height / (PANGO_SCALE * resource_scale));
 
       if (min_height_p)
         {
@@ -2614,7 +2701,7 @@ clutter_text_get_preferred_height (ClutterActor *self,
               pango_layout_line_get_extents (line, NULL, &logical_rect);
 
               logical_height = logical_rect.y + logical_rect.height;
-              line_height = ceilf (logical_height / 1024.0f);
+              line_height = ceilf (logical_height / (PANGO_SCALE * resource_scale));
 
               *min_height_p = line_height;
             }
@@ -4168,6 +4255,11 @@ clutter_text_init (ClutterText *self)
   priv->direction_changed_id =
     g_signal_connect (self, "notify::text-direction",
                       G_CALLBACK (clutter_text_direction_changed_cb),
+                      NULL);
+
+  priv->resource_scale_changed_id =
+    g_signal_connect (self, "notify::resource-scale",
+                      G_CALLBACK (clutter_text_resource_scale_changed_cb),
                       NULL);
 }
 
