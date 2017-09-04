@@ -802,7 +802,7 @@ clutter_text_create_layout (ClutterText *text,
        !((priv->editable && priv->single_line_mode) ||
          (priv->ellipsize == PANGO_ELLIPSIZE_NONE && !priv->wrap))))
     {
-      width = allocation_width * PANGO_SCALE + 0.5f;
+      width = ceilf (allocation_width * PANGO_SCALE);
     }
 
   /* Pango only uses height if ellipsization is enabled, so don't set
@@ -819,7 +819,7 @@ clutter_text_create_layout (ClutterText *text,
       priv->ellipsize != PANGO_ELLIPSIZE_NONE &&
       !priv->single_line_mode)
     {
-      height = allocation_height * PANGO_SCALE + 0.5f;
+      height = ceilf (allocation_height * PANGO_SCALE);
     }
 
   /* Search for a cached layout with the same width and keep
@@ -2630,16 +2630,16 @@ clutter_text_get_paint_volume (ClutterActor       *self,
       layout = clutter_text_get_layout (text);
       pango_layout_get_extents (layout, &ink_rect, NULL);
 
-      origin.x = ink_rect.x / ((float) PANGO_SCALE * resource_scale);
-      origin.y = ink_rect.y / ((float) PANGO_SCALE * resource_scale);
+      origin.x = ceilf (ink_rect.x / (PANGO_SCALE * resource_scale));
+      origin.y = ceilf (ink_rect.y / (PANGO_SCALE * resource_scale));
       origin.z = 0;
       clutter_paint_volume_set_origin (&priv->paint_volume, &origin);
       clutter_paint_volume_set_width (&priv->paint_volume,
-                                      (ink_rect.width /
-                                       ((float) PANGO_SCALE * resource_scale)));
+                                      ceilf (ink_rect.width /
+                                       (PANGO_SCALE * resource_scale)));
       clutter_paint_volume_set_height (&priv->paint_volume,
-                                       ink_rect.height /
-                                       ((float) PANGO_SCALE * resource_scale));
+                                       ceilf (ink_rect.height /
+                                       (PANGO_SCALE * resource_scale)));
 
       /* If the cursor is visible then that will likely be drawn
          outside of the ink rectangle so we should merge that in */
@@ -2710,7 +2710,7 @@ clutter_text_get_preferred_width (ClutterActor *self,
   if (natural_width_p)
     {
       if (priv->editable && priv->single_line_mode)
-        *natural_width_p = layout_width + TEXT_PADDING * 2 * resource_scale;
+        *natural_width_p = layout_width + TEXT_PADDING * 2;
       else
         *natural_width_p = layout_width;
     }
@@ -2775,7 +2775,8 @@ clutter_text_get_preferred_height (ClutterActor *self,
               pango_layout_line_get_extents (line, NULL, &logical_rect);
 
               logical_height = logical_rect.y + logical_rect.height;
-              line_height = ceilf (logical_height / (PANGO_SCALE * resource_scale));
+              line_height = ceilf (logical_height /
+                                   (PANGO_SCALE * resource_scale));
 
               *min_height_p = line_height;
             }
