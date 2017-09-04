@@ -2349,10 +2349,7 @@ clutter_text_paint (ClutterActor *self)
   guint n_chars;
   float alloc_width;
   float alloc_height;
-  float resource_scale, paint_scale;
-
-  if (!clutter_actor_get_resource_scale (self, &resource_scale))
-    return;
+  float resource_scale;
 
   /* FIXME: this should not be needed, but apparently the text-cache
    * test unit manages to get in a situation where the active frame
@@ -2396,6 +2393,12 @@ clutter_text_paint (ClutterActor *self)
       !clutter_text_should_draw_cursor (text))
     return;
 
+  if (!clutter_actor_get_resource_scale (CLUTTER_ACTOR (self), &resource_scale))
+    return;
+
+  clutter_actor_box_scale (&alloc, resource_scale);
+  clutter_actor_box_get_size (&alloc, &alloc_width, &alloc_height);
+
   if (priv->editable && priv->single_line_mode)
     layout = clutter_text_create_layout (text, -1, -1);
   else
@@ -2427,12 +2430,12 @@ clutter_text_paint (ClutterActor *self)
         }
     }
 
-  clutter_actor_box_scale (&alloc, resource_scale);
-  clutter_actor_box_get_size (&alloc, &alloc_width, &alloc_height);
-
-  paint_scale = 1.0f / resource_scale;
-  cogl_framebuffer_push_matrix (fb);
-  cogl_framebuffer_scale (fb, paint_scale, paint_scale, 1.0f);
+  if (resource_scale != 1.0f)
+    {
+      float paint_scale = 1.0f / resource_scale;
+      cogl_framebuffer_push_matrix (fb);
+      cogl_framebuffer_scale (fb, paint_scale, paint_scale, 1.0f);
+    }
 
   if (clutter_text_should_draw_cursor (text))
     clutter_text_ensure_cursor_position (text, resource_scale);
@@ -2526,7 +2529,8 @@ clutter_text_paint (ClutterActor *self)
 
   selection_paint (text);
 
-  cogl_framebuffer_pop_matrix (fb);
+  if (resource_scale != 1.0f)
+    cogl_framebuffer_pop_matrix (fb);
 
   if (clip_set)
     cogl_framebuffer_pop_clip (fb);
