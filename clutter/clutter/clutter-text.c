@@ -259,6 +259,7 @@ enum
 
 static guint text_signals[LAST_SIGNAL] = { 0, };
 
+static PangoLayout * clutter_text_create_layout (ClutterText *self, gfloat width, gfloat height);
 static void clutter_text_settings_changed_cb (ClutterText *text);
 static void buffer_connect_signals (ClutterText *self);
 static void buffer_disconnect_signals (ClutterText *self);
@@ -736,6 +737,35 @@ clutter_text_resource_scale_changed_cb (GObject    *gobject,
   clutter_actor_queue_relayout (CLUTTER_ACTOR (gobject));
 }
 
+static PangoLayout *
+create_text_layout_with_scale (ClutterText *text,
+                               gfloat       allocation_width,
+                               gfloat       allocation_height,
+                               gfloat       scale)
+{
+  if (allocation_width > 0)
+    allocation_width *= scale;
+
+  if (allocation_height > 0)
+    allocation_height *= scale;
+
+  return clutter_text_create_layout (text, allocation_width, allocation_height);
+}
+
+static PangoLayout *
+create_text_layout_with_resource_scale (ClutterText *text,
+                                        gfloat       allocation_width,
+                                        gfloat       allocation_height)
+{
+  float resource_scale;
+
+  if (!clutter_actor_get_resource_scale (CLUTTER_ACTOR (text), &resource_scale))
+    resource_scale = 2.0f;
+
+  return create_text_layout_with_scale (text, allocation_width,
+                                        allocation_height, resource_scale);
+}
+
 /*
  * clutter_text_create_layout:
  * @text: a #ClutterText
@@ -755,20 +785,10 @@ clutter_text_create_layout (ClutterText *text,
   ClutterTextPrivate *priv = text->priv;
   LayoutCache *oldest_cache = priv->cached_layouts;
   gboolean found_free_cache = FALSE;
-  float resource_scale;
   gint width = -1;
   gint height = -1;
   PangoEllipsizeMode ellipsize = PANGO_ELLIPSIZE_NONE;
   int i;
-
-  if (clutter_actor_get_resource_scale (CLUTTER_ACTOR (text), &resource_scale))
-    {
-      if (allocation_width > 0)
-        allocation_width *= resource_scale;
-
-      if (allocation_height > 0)
-        allocation_height *= resource_scale;
-    }
 
   /* First determine the width, height, and ellipsize mode that
    * we need for the layout. The ellipsize mode depends on
@@ -2725,8 +2745,8 @@ clutter_text_get_preferred_height (ClutterActor *self,
       if (priv->single_line_mode)
         for_width = -1;
 
-      layout = clutter_text_create_layout (CLUTTER_TEXT (self),
-                                           for_width, -1);
+      layout = create_text_layout_with_scale (CLUTTER_TEXT (self),
+                                              for_width, -1, resource_scale);
 
       pango_layout_get_extents (layout, NULL, &logical_rect);
 
@@ -2782,9 +2802,9 @@ clutter_text_allocate (ClutterActor           *self,
   if (text->priv->editable && text->priv->single_line_mode)
     clutter_text_create_layout (text, -1, -1);
   else
-    clutter_text_create_layout (text,
-                                box->x2 - box->x1,
-                                box->y2 - box->y1);
+    create_text_layout_with_resource_scale (text,
+                                            box->x2 - box->x1,
+                                            box->y2 - box->y1);
 
   parent_class = CLUTTER_ACTOR_CLASS (clutter_text_parent_class);
   parent_class->allocate (self, box, flags);
@@ -5402,7 +5422,7 @@ clutter_text_get_layout (ClutterText *self)
 
   clutter_actor_get_size (CLUTTER_ACTOR (self), &width, &height);
 
-  return clutter_text_create_layout (self, width, height);
+  return create_text_layout_with_resource_scale (self, width, height);
 }
 
 /**
