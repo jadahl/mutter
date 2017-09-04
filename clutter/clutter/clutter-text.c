@@ -259,7 +259,6 @@ enum
 
 static guint text_signals[LAST_SIGNAL] = { 0, };
 
-static PangoLayout * clutter_text_create_layout (ClutterText *self, gfloat width, gfloat height);
 static void clutter_text_settings_changed_cb (ClutterText *text);
 static void buffer_connect_signals (ClutterText *self);
 static void buffer_disconnect_signals (ClutterText *self);
@@ -556,7 +555,6 @@ clutter_text_create_layout_no_cache (ClutterText       *text,
                                   cursor_index,
                                   strlen (priv->preedit_str));
 
-          ensure_text_scale_pango_attributes (text, &tmp_attrs);
           pango_layout_set_attributes (layout, tmp_attrs);
         }
 
@@ -735,35 +733,6 @@ clutter_text_resource_scale_changed_cb (GObject    *gobject,
   g_clear_pointer (&priv->effective_attrs, pango_attr_list_unref);
   clutter_text_dirty_cache (self);
   clutter_actor_queue_relayout (CLUTTER_ACTOR (gobject));
-}
-
-static PangoLayout *
-create_text_layout_with_scale (ClutterText *text,
-                               gfloat       allocation_width,
-                               gfloat       allocation_height,
-                               gfloat       scale)
-{
-  if (allocation_width > 0)
-    allocation_width *= scale;
-
-  if (allocation_height > 0)
-    allocation_height *= scale;
-
-  return clutter_text_create_layout (text, allocation_width, allocation_height);
-}
-
-static PangoLayout *
-create_text_layout_with_resource_scale (ClutterText *text,
-                                        gfloat       allocation_width,
-                                        gfloat       allocation_height)
-{
-  float resource_scale;
-
-  if (!clutter_actor_get_resource_scale (CLUTTER_ACTOR (text), &resource_scale))
-    resource_scale = 2.0f;
-
-  return create_text_layout_with_scale (text, allocation_width,
-                                        allocation_height, resource_scale);
 }
 
 /*
@@ -945,6 +914,37 @@ clutter_text_create_layout (ClutterText *text,
   /* Mark the 'time' this cache was created and advance the time */
   oldest_cache->age = priv->cache_age++;
   return oldest_cache->layout;
+}
+
+static PangoLayout *
+create_text_layout_with_scale (ClutterText *text,
+                               gfloat       allocation_width,
+                               gfloat       allocation_height,
+                               gfloat       scale)
+{
+  if (allocation_width > 0)
+    allocation_width *= scale;
+
+  if (allocation_height > 0)
+    allocation_height *= scale;
+
+  return clutter_text_create_layout (text, allocation_width, allocation_height);
+}
+
+static PangoLayout *
+maybe_create_text_layout_with_resource_scale (ClutterText *text,
+                                              gfloat       allocation_width,
+                                              gfloat       allocation_height)
+{
+  float resource_scale;
+
+  if (!clutter_actor_get_resource_scale (CLUTTER_ACTOR (text), &resource_scale))
+    return NULL;
+
+  return create_text_layout_with_scale (text,
+                                        allocation_width,
+                                        allocation_height,
+                                        resource_scale);
 }
 
 /**
@@ -2802,9 +2802,9 @@ clutter_text_allocate (ClutterActor           *self,
   if (text->priv->editable && text->priv->single_line_mode)
     clutter_text_create_layout (text, -1, -1);
   else
-    create_text_layout_with_resource_scale (text,
-                                            box->x2 - box->x1,
-                                            box->y2 - box->y1);
+    maybe_create_text_layout_with_resource_scale (text,
+                                                  box->x2 - box->x1,
+                                                  box->y2 - box->y1);
 
   parent_class = CLUTTER_ACTOR_CLASS (clutter_text_parent_class);
   parent_class->allocate (self, box, flags);
@@ -5413,6 +5413,7 @@ clutter_text_set_markup (ClutterText *self,
 PangoLayout *
 clutter_text_get_layout (ClutterText *self)
 {
+  PangoLayout *layout;
   gfloat width, height;
 
   g_return_val_if_fail (CLUTTER_IS_TEXT (self), NULL);
@@ -5421,8 +5422,12 @@ clutter_text_get_layout (ClutterText *self)
     return clutter_text_create_layout (self, -1, -1);
 
   clutter_actor_get_size (CLUTTER_ACTOR (self), &width, &height);
+  layout = maybe_create_text_layout_with_resource_scale (self, width, height);
 
-  return create_text_layout_with_resource_scale (self, width, height);
+  if (!layout)
+    layout = clutter_text_create_layout (self, width, height);
+
+  return layout;
 }
 
 /**
