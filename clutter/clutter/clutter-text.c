@@ -64,6 +64,12 @@
 #include "clutter-paint-volume-private.h"
 #include "clutter-scriptable.h"
 
+/* Utility pango to (logical) pixels macros */
+#define PIXELS_TO_PANGO(px) ceilf (((float) px) * PANGO_SCALE)
+#define LOGICAL_PIXELS_TO_PANGO(px, scale) PIXELS_TO_PANGO (((float) px) * scale)
+#define PANGO_TO_PIXELS(size) ceilf (((float) size) / PANGO_SCALE)
+#define PANGO_TO_LOGICAL_PIXELS(size, scale) PANGO_TO_PIXELS (((float) size) / (scale))
+
 /* cursor width in pixels */
 #define DEFAULT_CURSOR_SIZE     2
 
@@ -804,7 +810,7 @@ clutter_text_create_layout (ClutterText *text,
        !((priv->editable && priv->single_line_mode) ||
          (priv->ellipsize == PANGO_ELLIPSIZE_NONE && !priv->wrap))))
     {
-      width = ceilf (allocation_width * PANGO_SCALE);
+      width = PIXELS_TO_PANGO (allocation_width);
     }
 
   /* Pango only uses height if ellipsization is enabled, so don't set
@@ -821,7 +827,7 @@ clutter_text_create_layout (ClutterText *text,
       priv->ellipsize != PANGO_ELLIPSIZE_NONE &&
       !priv->single_line_mode)
     {
-      height = ceilf (allocation_height * PANGO_SCALE);
+      height = PIXELS_TO_PANGO (allocation_height);
     }
 
   /* Search for a cached layout with the same width and keep
@@ -979,8 +985,8 @@ clutter_text_coords_to_position (ClutterText *self,
   /* Take any offset due to scrolling into account, and normalize
    * the coordinates to PangoScale units
    */
-  px = (x - self->priv->text_logical_x) * PANGO_SCALE * resource_scale;
-  py = (y - self->priv->text_logical_y) * PANGO_SCALE * resource_scale;
+  px = LOGICAL_PIXELS_TO_PANGO (x - self->priv->text_logical_x, resource_scale);
+  py = LOGICAL_PIXELS_TO_PANGO (y - self->priv->text_logical_y, resource_scale);
 
   pango_layout_xy_to_index (clutter_text_get_layout (self),
                             px, py,
@@ -1060,7 +1066,7 @@ clutter_text_position_to_coords_internal (ClutterText *self,
 
   if (x)
     {
-      *x = (gfloat) rect.x / PANGO_SCALE;
+      *x = PANGO_TO_PIXELS (rect.x);
 
       /* Take any offset due to scrolling into account */
       if (priv->single_line_mode)
@@ -1068,10 +1074,10 @@ clutter_text_position_to_coords_internal (ClutterText *self,
     }
 
   if (y)
-    *y = (gfloat) rect.y / PANGO_SCALE;
+    *y = PANGO_TO_PIXELS (rect.y);
 
   if (line_height)
-    *line_height = (gfloat) rect.height / PANGO_SCALE;
+    *line_height = PANGO_TO_PIXELS (rect.height);
 
   return TRUE;
 }
@@ -1694,18 +1700,16 @@ clutter_text_foreach_selection_rectangle (ClutterText              *self,
           gfloat range_x;
           gfloat range_width;
 
-          range_x = ranges[i * 2] / PANGO_SCALE;
+          range_x = PANGO_TO_PIXELS (ranges[i * 2]);
 
           /* Account for any scrolling in single line mode */
           if (priv->single_line_mode)
             range_x += priv->text_x;
 
 
-          range_width = ((gfloat) ranges[i * 2 + 1] - (gfloat) ranges[i * 2])
-                      / PANGO_SCALE;
-
+          range_width = PANGO_TO_PIXELS (ranges[i * 2 + 1] - ranges[i * 2]);
           box.x1 = range_x;
-          box.x2 = ceilf (range_x + range_width + .5f);
+          box.x2 = ceilf (range_x + range_width);
 
           clutter_actor_box_scale (&box, scale);
 
@@ -2454,7 +2458,7 @@ clutter_text_paint (ClutterActor *self)
       clip_set = TRUE;
 
       actor_width = alloc_width - 2 * TEXT_PADDING;
-      text_width  = logical_rect.width / PANGO_SCALE;
+      text_width  = PANGO_TO_PIXELS (logical_rect.width);
 
       rtl = priv->resolved_direction == PANGO_DIRECTION_RTL;
 
@@ -2634,16 +2638,16 @@ clutter_text_get_paint_volume (ClutterActor       *self,
       layout = clutter_text_get_layout (text);
       pango_layout_get_extents (layout, &ink_rect, NULL);
 
-      origin.x = ceilf (ink_rect.x / (PANGO_SCALE * resource_scale));
-      origin.y = ceilf (ink_rect.y / (PANGO_SCALE * resource_scale));
+      origin.x = PANGO_TO_LOGICAL_PIXELS (ink_rect.x, resource_scale);
+      origin.y = PANGO_TO_LOGICAL_PIXELS (ink_rect.y, resource_scale);
       origin.z = 0;
       clutter_paint_volume_set_origin (&priv->paint_volume, &origin);
       clutter_paint_volume_set_width (&priv->paint_volume,
-                                      ceilf (ink_rect.width /
-                                       (PANGO_SCALE * resource_scale)));
+                                      PANGO_TO_LOGICAL_PIXELS (ink_rect.width,
+                                                               resource_scale));
       clutter_paint_volume_set_height (&priv->paint_volume,
-                                       ceilf (ink_rect.height /
-                                       (PANGO_SCALE * resource_scale)));
+                                       PANGO_TO_LOGICAL_PIXELS (ink_rect.height,
+                                                                resource_scale));
 
       /* If the cursor is visible then that will likely be drawn
          outside of the ink rectangle so we should merge that in */
@@ -2700,7 +2704,7 @@ clutter_text_get_preferred_width (ClutterActor *self,
   logical_width = logical_rect.x + logical_rect.width;
 
   layout_width = logical_width > 0
-    ? ceilf (logical_width / (PANGO_SCALE * resource_scale))
+    ? PANGO_TO_LOGICAL_PIXELS (logical_width, resource_scale)
     : 1;
 
   if (min_width_p)
@@ -2763,7 +2767,7 @@ clutter_text_get_preferred_height (ClutterActor *self,
        * the height accordingly
        */
       logical_height = logical_rect.y + logical_rect.height;
-      layout_height = ceilf (logical_height / (PANGO_SCALE * resource_scale));
+      layout_height = PANGO_TO_LOGICAL_PIXELS (logical_height, resource_scale);
 
       if (min_height_p)
         {
@@ -2779,8 +2783,8 @@ clutter_text_get_preferred_height (ClutterActor *self,
               pango_layout_line_get_extents (line, NULL, &logical_rect);
 
               logical_height = logical_rect.y + logical_rect.height;
-              line_height = ceilf (logical_height /
-                                   (PANGO_SCALE * resource_scale));
+              line_height = PANGO_TO_LOGICAL_PIXELS (logical_height,
+                                                     resource_scale);
 
               *min_height_p = line_height;
             }
