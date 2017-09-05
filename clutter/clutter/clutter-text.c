@@ -65,9 +65,9 @@
 #include "clutter-scriptable.h"
 
 /* Utility pango to (logical) pixels macros */
-#define PIXELS_TO_PANGO(px) ceilf (((float) px) * PANGO_SCALE)
+#define PIXELS_TO_PANGO(px) ceilf (((float) px) * (float) PANGO_SCALE)
 #define LOGICAL_PIXELS_TO_PANGO(px, scale) PIXELS_TO_PANGO (((float) px) * scale)
-#define PANGO_TO_PIXELS(size) ceilf (((float) size) / PANGO_SCALE)
+#define PANGO_TO_PIXELS(size) ceilf (((float) size) / (float) PANGO_SCALE)
 #define PANGO_TO_LOGICAL_PIXELS(size, scale) PANGO_TO_PIXELS (((float) size) / (scale))
 
 /* cursor width in pixels */
