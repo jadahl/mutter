@@ -139,15 +139,17 @@ struct _ClutterTextPrivate
    */
   gint x_pos;
 
-  /* the x position of the PangoLayout when in
-   * single line mode, to scroll the contents of the
+  /* the x position of the PangoLayout (in both physical and logical pixels)
+   * when in single line mode, to scroll the contents of the
    * text actor
    */
   gint text_x;
+  gint text_logical_x;
 
-  /* the y position of the PangoLayout, fixed to 0 by
-   * default for now */
+  /* the y position of the PangoLayout (in both physical and logical pixels),
+   * fixed to 0 by default for now */
   gint text_y;
+  gint text_logical_y;
 
   /* Where to draw the cursor */
   ClutterRect cursor_rect;
@@ -977,8 +979,8 @@ clutter_text_coords_to_position (ClutterText *self,
   /* Take any offset due to scrolling into account, and normalize
    * the coordinates to PangoScale units
    */
-  px = (x - self->priv->text_x) * PANGO_SCALE * resource_scale;
-  py = (y - self->priv->text_y) * PANGO_SCALE * resource_scale;
+  px = (x - self->priv->text_logical_x) * PANGO_SCALE * resource_scale;
+  py = (y - self->priv->text_logical_y) * PANGO_SCALE * resource_scale;
 
   pango_layout_xy_to_index (clutter_text_get_layout (self),
                             px, py,
@@ -2509,6 +2511,8 @@ clutter_text_paint (ClutterActor *self)
     {
       priv->text_x = text_x;
       priv->text_y = text_y;
+      priv->text_logical_x = roundf ((float) text_x / resource_scale);
+      priv->text_logical_y = roundf ((float) text_y / resource_scale);
 
       clutter_text_ensure_cursor_position (text, resource_scale);
     }
@@ -6443,10 +6447,10 @@ clutter_text_get_layout_offsets (ClutterText *self,
   priv = self->priv;
 
   if (x != NULL)
-    *x = priv->text_x;
+    *x = priv->text_logical_x;
 
   if (y != NULL)
-    *y = priv->text_y;
+    *y = priv->text_logical_y;
 }
 
 /**
