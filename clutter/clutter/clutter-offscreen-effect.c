@@ -62,6 +62,8 @@
  * case.
  */
 
+#include <math.h>
+
 #ifdef HAVE_CONFIG_H
 #include "clutter-build-config.h"
 #endif
@@ -229,6 +231,7 @@ clutter_offscreen_effect_pre_paint (ClutterEffect *effect)
   gfloat fbo_width = -1, fbo_height = -1;
   gfloat width, height;
   gfloat xexpand, yexpand;
+  gfloat resource_scale;
   int texture_width, texture_height;
 
   if (!clutter_actor_meta_get_enabled (CLUTTER_ACTOR_META (effect)))
@@ -240,12 +243,21 @@ clutter_offscreen_effect_pre_paint (ClutterEffect *effect)
   stage = _clutter_actor_get_stage_internal (priv->actor);
   clutter_actor_get_size (stage, &stage_width, &stage_height);
 
+  if (clutter_actor_get_resource_scale (stage, &resource_scale))
+    {
+      stage_width *= resource_scale;
+      stage_height *= resource_scale;
+    }
+
   /* The paint box is the bounding box of the actor's paint volume in
    * stage coordinates. This will give us the size for the framebuffer
    * we need to redirect its rendering offscreen and its position will
    * be used to setup an offset viewport */
   if (clutter_actor_get_paint_box (priv->actor, &box))
     {
+      if (clutter_actor_get_resource_scale (priv->actor, &resource_scale))
+        clutter_actor_box_scale (&box, resource_scale);
+
       clutter_actor_box_get_size (&box, &fbo_width, &fbo_height);
       clutter_actor_box_get_origin (&box, &priv->x_offset, &priv->y_offset);
 
@@ -264,7 +276,7 @@ clutter_offscreen_effect_pre_paint (ClutterEffect *effect)
     priv->y_offset = 0.0f;
 
   /* First assert that the framebuffer is the right size... */
-  if (!update_fbo (effect, fbo_width, fbo_height))
+  if (!update_fbo (effect, ceilf (fbo_width), ceilf (fbo_height)))
     return FALSE;
 
   texture_width = cogl_texture_get_width (priv->texture);
@@ -286,6 +298,12 @@ clutter_offscreen_effect_pre_paint (ClutterEffect *effect)
    * but offset it so that the actor of interest lands on our
    * framebuffer. */
   clutter_actor_get_size (priv->stage, &width, &height);
+
+  if (clutter_actor_get_resource_scale (priv->stage, &resource_scale))
+    {
+      width *= resource_scale;
+      height *= resource_scale;
+    }
 
   /* Expand the viewport if the actor is partially off-stage,
    * otherwise the actor will end up clipped to the stage viewport
@@ -379,6 +397,7 @@ clutter_offscreen_effect_paint_texture (ClutterOffscreenEffect *effect)
 {
   ClutterOffscreenEffectPrivate *priv = effect->priv;
   CoglMatrix modelview;
+  float resource_scale;
 
   cogl_push_matrix ();
 
@@ -388,6 +407,16 @@ clutter_offscreen_effect_paint_texture (ClutterOffscreenEffect *effect)
 
   cogl_matrix_init_identity (&modelview);
   _clutter_actor_apply_modelview_transform (priv->stage, &modelview);
+
+  if (clutter_actor_get_resource_scale (priv->actor, &resource_scale))
+    {
+      if (resource_scale != 1.0f)
+        {
+          float paint_scale = 1.0f / resource_scale;
+          cogl_matrix_scale (&modelview, paint_scale, paint_scale, 1);
+        }
+    }
+
   cogl_matrix_translate (&modelview, priv->x_offset, priv->y_offset, 0.0f);
   cogl_set_modelview_matrix (&modelview);
 
