@@ -9551,8 +9551,6 @@ clutter_actor_get_preferred_width (ClutterActor *self,
 
   priv = self->priv;
 
-  CLUTTER_SET_PRIVATE_FLAGS (self, CLUTTER_IN_PREF_WIDTH);
-
   info = _clutter_actor_get_layout_info_or_defaults (self);
 
   /* we shortcircuit the case of a fixed size set using set_width() */
@@ -9566,6 +9564,8 @@ clutter_actor_get_preferred_width (ClutterActor *self,
 
       return;
     }
+
+  CLUTTER_SET_PRIVATE_FLAGS (self, CLUTTER_IN_PREF_WIDTH);
 
   /* the remaining cases are:
    *
@@ -9699,8 +9699,6 @@ clutter_actor_get_preferred_height (ClutterActor *self,
 
   priv = self->priv;
 
-  CLUTTER_SET_PRIVATE_FLAGS (self, CLUTTER_IN_PREF_HEIGHT);
-
   info = _clutter_actor_get_layout_info_or_defaults (self);
 
   /* we shortcircuit the case of a fixed size set using set_height() */
@@ -9714,6 +9712,8 @@ clutter_actor_get_preferred_height (ClutterActor *self,
 
       return;
     }
+
+  CLUTTER_SET_PRIVATE_FLAGS (self, CLUTTER_IN_PREF_HEIGHT);
 
   /* the remaining cases are:
    *
