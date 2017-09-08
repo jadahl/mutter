@@ -2682,11 +2682,8 @@ clutter_text_get_preferred_width (ClutterActor *self,
   gfloat layout_width;
   gfloat resource_scale;
 
-  /* We should not proceed if no resource scale is available, but
-   * not doing this causes some labels not to be regenerated even at
-   * later times. */
   if (!clutter_actor_get_resource_scale (self, &resource_scale))
-    resource_scale = 1.0f;
+    return;
 
   layout = clutter_text_create_layout (text, -1, -1);
   pango_layout_get_extents (layout, NULL, &logical_rect);
@@ -2742,11 +2739,8 @@ clutter_text_get_preferred_height (ClutterActor *self,
       gfloat layout_height;
       gfloat resource_scale;
 
-      /* We should not proceed if no resource scale is available, but
-       * not doing this causes some labels not to be regenerated even at
-       * later times. */
       if (!clutter_actor_get_resource_scale (self, &resource_scale))
-        resource_scale = 1.0f;
+        return;
 
       if (priv->single_line_mode)
         for_width = -1;
