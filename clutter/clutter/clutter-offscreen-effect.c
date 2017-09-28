@@ -146,7 +146,10 @@ clutter_offscreen_effect_real_create_texture (ClutterOffscreenEffect *effect,
 }
 
 static gboolean
-update_fbo (ClutterEffect *effect, int fbo_width, int fbo_height)
+update_fbo (ClutterEffect *effect,
+            int            fbo_width,
+            int            fbo_height,
+            float          resource_scale)
 {
   ClutterOffscreenEffect *self = CLUTTER_OFFSCREEN_EFFECT (effect);
   ClutterOffscreenEffectPrivate *priv = self->priv;
@@ -173,13 +176,16 @@ update_fbo (ClutterEffect *effect, int fbo_width, int fbo_height)
 
       priv->target = cogl_pipeline_new (ctx);
 
-      /* We're always going to render the texture at a 1:1 texel:pixel
-         ratio so we can use 'nearest' filtering to decrease the
-         effects of rounding errors in the geometry calculation */
-      cogl_pipeline_set_layer_filters (priv->target,
-                                       0, /* layer_index */
-                                       COGL_PIPELINE_FILTER_NEAREST,
-                                       COGL_PIPELINE_FILTER_NEAREST);
+      if (fmodf (resource_scale, 1.0f) == 0)
+        {
+          /* We're always going to render the texture at a 1:1 texel:pixel
+            ratio so we can use 'nearest' filtering to decrease the
+            effects of rounding errors in the geometry calculation */
+          cogl_pipeline_set_layer_filters (priv->target,
+                                           0, /* layer_index */
+                                           COGL_PIPELINE_FILTER_NEAREST,
+                                           COGL_PIPELINE_FILTER_NEAREST);
+        }
     }
 
   if (priv->texture != NULL)
@@ -232,6 +238,7 @@ clutter_offscreen_effect_pre_paint (ClutterEffect *effect)
   gfloat width, height;
   gfloat xexpand, yexpand;
   gfloat resource_scale;
+  gfloat ceiled_resource_scale;
   int texture_width, texture_height;
 
   if (!clutter_actor_meta_get_enabled (CLUTTER_ACTOR_META (effect)))
@@ -243,10 +250,16 @@ clutter_offscreen_effect_pre_paint (ClutterEffect *effect)
   stage = _clutter_actor_get_stage_internal (priv->actor);
   clutter_actor_get_size (stage, &stage_width, &stage_height);
 
-  if (clutter_actor_get_resource_scale (stage, &resource_scale))
+  if (clutter_actor_get_resource_scale (priv->actor, &resource_scale))
     {
-      stage_width *= resource_scale;
-      stage_height *= resource_scale;
+      ceiled_resource_scale = ceilf (resource_scale);
+      stage_width *= ceiled_resource_scale;
+      stage_height *= ceiled_resource_scale;
+    }
+  else
+    {
+      /* We are sure we have a resource scale set to a good value at paint */
+      g_assert_not_reached ();
     }
 
   /* The paint box is the bounding box of the actor's paint volume in
@@ -255,9 +268,7 @@ clutter_offscreen_effect_pre_paint (ClutterEffect *effect)
    * be used to setup an offset viewport */
   if (clutter_actor_get_paint_box (priv->actor, &box))
     {
-      if (clutter_actor_get_resource_scale (priv->actor, &resource_scale))
-        clutter_actor_box_scale (&box, resource_scale);
-
+      clutter_actor_box_scale (&box, ceiled_resource_scale);
       clutter_actor_box_get_size (&box, &fbo_width, &fbo_height);
       clutter_actor_box_get_origin (&box, &priv->x_offset, &priv->y_offset);
 
@@ -275,8 +286,11 @@ clutter_offscreen_effect_pre_paint (ClutterEffect *effect)
   if (fbo_height == stage_height)
     priv->y_offset = 0.0f;
 
+  fbo_width = ceilf (fbo_width);
+  fbo_height = ceilf (fbo_height);
+
   /* First assert that the framebuffer is the right size... */
-  if (!update_fbo (effect, ceilf (fbo_width), ceilf (fbo_height)))
+  if (!update_fbo (effect, fbo_width, fbo_height, resource_scale))
     return FALSE;
 
   texture_width = cogl_texture_get_width (priv->texture);
@@ -299,11 +313,8 @@ clutter_offscreen_effect_pre_paint (ClutterEffect *effect)
    * framebuffer. */
   clutter_actor_get_size (priv->stage, &width, &height);
 
-  if (clutter_actor_get_resource_scale (priv->stage, &resource_scale))
-    {
-      width *= resource_scale;
-      height *= resource_scale;
-    }
+  width *= ceiled_resource_scale;
+  height *= ceiled_resource_scale;
 
   /* Expand the viewport if the actor is partially off-stage,
    * otherwise the actor will end up clipped to the stage viewport
@@ -412,7 +423,7 @@ clutter_offscreen_effect_paint_texture (ClutterOffscreenEffect *effect)
     {
       if (resource_scale != 1.0f)
         {
-          float paint_scale = 1.0f / resource_scale;
+          float paint_scale = 1.0f / ceilf (resource_scale);
           cogl_matrix_scale (&modelview, paint_scale, paint_scale, 1);
         }
     }
