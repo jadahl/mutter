@@ -93,8 +93,8 @@ struct _ClutterOffscreenEffectPrivate
      through create_texture(). This needs to be tracked separately so
      that we can detect when a different size is calculated and
      regenerate the fbo */
-  int fbo_width;
-  int fbo_height;
+  int target_width;
+  int target_height;
 
   gint old_opacity_override;
 
@@ -147,8 +147,8 @@ clutter_offscreen_effect_real_create_texture (ClutterOffscreenEffect *effect,
 
 static gboolean
 update_fbo (ClutterEffect *effect,
-            int            fbo_width,
-            int            fbo_height,
+            int            target_width,
+            int            target_height,
             float          resource_scale)
 {
   ClutterOffscreenEffect *self = CLUTTER_OFFSCREEN_EFFECT (effect);
@@ -164,8 +164,8 @@ update_fbo (ClutterEffect *effect,
       return FALSE;
     }
 
-  if (priv->fbo_width == fbo_width &&
-      priv->fbo_height == fbo_height &&
+  if (priv->target_width == target_width &&
+      priv->target_height == target_height &&
       priv->offscreen != NULL)
     return TRUE;
 
@@ -195,14 +195,14 @@ update_fbo (ClutterEffect *effect,
     }
 
   priv->texture =
-    clutter_offscreen_effect_create_texture (self, fbo_width, fbo_height);
+    clutter_offscreen_effect_create_texture (self, target_width, target_height);
   if (priv->texture == NULL)
     return FALSE;
 
   cogl_pipeline_set_layer_texture (priv->target, 0, priv->texture);
 
-  priv->fbo_width = fbo_width;
-  priv->fbo_height = fbo_height;
+  priv->target_width = target_width;
+  priv->target_height = target_height;
 
   if (priv->offscreen != NULL)
     cogl_handle_unref (priv->offscreen);
@@ -215,8 +215,8 @@ update_fbo (ClutterEffect *effect,
       cogl_handle_unref (priv->target);
       priv->target = NULL;
 
-      priv->fbo_width = 0;
-      priv->fbo_height = 0;
+      priv->target_width = 0;
+      priv->target_height = 0;
 
       return FALSE;
     }
@@ -234,7 +234,7 @@ clutter_offscreen_effect_pre_paint (ClutterEffect *effect)
   CoglMatrix projection;
   CoglColor transparent;
   gfloat stage_width, stage_height;
-  gfloat fbo_width = -1, fbo_height = -1;
+  gfloat target_width = -1, target_height = -1;
   gfloat width, height;
   gfloat xexpand, yexpand;
   gfloat resource_scale;
@@ -269,28 +269,28 @@ clutter_offscreen_effect_pre_paint (ClutterEffect *effect)
   if (clutter_actor_get_paint_box (priv->actor, &box))
     {
       clutter_actor_box_scale (&box, ceiled_resource_scale);
-      clutter_actor_box_get_size (&box, &fbo_width, &fbo_height);
+      clutter_actor_box_get_size (&box, &target_width, &target_height);
       clutter_actor_box_get_origin (&box, &priv->x_offset, &priv->y_offset);
 
-      fbo_width = MIN (fbo_width, stage_width);
-      fbo_height = MIN (fbo_height, stage_height);
+      target_width = MIN (target_width, stage_width);
+      target_height = MIN (target_height, stage_height);
     }
   else
     {
-      fbo_width = stage_width;
-      fbo_height = stage_height;
+      target_width = stage_width;
+      target_height = stage_height;
     }
 
-  if (fbo_width == stage_width)
+  if (target_width == stage_width)
     priv->x_offset = 0.0f;
-  if (fbo_height == stage_height)
+  if (target_height == stage_height)
     priv->y_offset = 0.0f;
 
-  fbo_width = ceilf (fbo_width);
-  fbo_height = ceilf (fbo_height);
+  target_width = ceilf (target_width);
+  target_height = ceilf (target_height);
 
   /* First assert that the framebuffer is the right size... */
-  if (!update_fbo (effect, fbo_width, fbo_height, resource_scale))
+  if (!update_fbo (effect, target_width, target_height, resource_scale))
     return FALSE;
 
   texture_width = cogl_texture_get_width (priv->texture);
