@@ -95,6 +95,30 @@ meta_wayland_buffer_is_realized (MetaWaylandBuffer *buffer)
 }
 
 gboolean
+meta_wayland_buffer_realize_egl_stream (MetaWaylandBuffer  *buffer,
+                                        GError            **error)
+{
+  MetaWaylandEglStream *stream;
+  CoglTexture2D *texture;
+
+  stream = meta_wayland_egl_stream_new (buffer, error);
+  if (!stream)
+    return FALSE;
+
+  buffer->egl_stream.stream = stream;
+  buffer->type = META_WAYLAND_BUFFER_TYPE_EGL_STREAM;
+
+  texture = meta_wayland_egl_stream_create_texture (stream, error);
+  if (!texture)
+    return FALSE;
+
+  buffer->texture = COGL_TEXTURE (texture);
+  buffer->is_y_inverted = meta_wayland_egl_stream_is_y_inverted (stream);
+
+  return TRUE;
+}
+
+gboolean
 meta_wayland_buffer_realize (MetaWaylandBuffer *buffer)
 {
   EGLint format;
@@ -103,7 +127,6 @@ meta_wayland_buffer_realize (MetaWaylandBuffer *buffer)
   ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
   CoglContext *cogl_context = clutter_backend_get_cogl_context (clutter_backend);
   EGLDisplay egl_display = cogl_egl_context_get_egl_display (cogl_context);
-  MetaWaylandEglStream *stream;
   MetaWaylandDmaBufBuffer *dma_buf;
 
   if (wl_shm_buffer_get (buffer->resource) != NULL)
@@ -120,23 +143,8 @@ meta_wayland_buffer_realize (MetaWaylandBuffer *buffer)
       return TRUE;
     }
 
-  stream = meta_wayland_egl_stream_new (buffer, NULL);
-  if (stream)
-    {
-      CoglTexture2D *texture;
-
-      buffer->egl_stream.stream = stream;
-      buffer->type = META_WAYLAND_BUFFER_TYPE_EGL_STREAM;
-
-      texture = meta_wayland_egl_stream_create_texture (stream, NULL);
-      if (!texture)
-        return FALSE;
-
-      buffer->texture = COGL_TEXTURE (texture);
-      buffer->is_y_inverted = meta_wayland_egl_stream_is_y_inverted (stream);
-
-      return TRUE;
-    }
+  if (meta_wayland_buffer_realize_egl_stream (buffer, NULL))
+    return TRUE;
 
   dma_buf = meta_wayland_dma_buf_from_buffer (buffer);
   if (dma_buf)

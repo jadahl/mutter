@@ -49,7 +49,15 @@ attach_eglstream_consumer (struct wl_client   *client,
   MetaWaylandBuffer *buffer = meta_wayland_buffer_from_resource (wl_eglstream);
 
   if (!meta_wayland_buffer_is_realized (buffer))
-    meta_wayland_buffer_realize (buffer);
+    {
+      GError *error = NULL;
+
+      if (!meta_wayland_buffer_realize_egl_stream (buffer, &error))
+        {
+          g_warning ("Failed to relize EGLStream: %s", error->message);
+          g_error_free (error);
+        }
+    }
 }
 
 static const struct wl_eglstream_controller_interface

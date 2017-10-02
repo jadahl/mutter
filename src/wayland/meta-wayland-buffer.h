@@ -70,6 +70,8 @@ G_DECLARE_FINAL_TYPE (MetaWaylandBuffer, meta_wayland_buffer,
 MetaWaylandBuffer *     meta_wayland_buffer_from_resource       (struct wl_resource    *resource);
 gboolean                meta_wayland_buffer_is_realized         (MetaWaylandBuffer     *buffer);
 gboolean                meta_wayland_buffer_realize             (MetaWaylandBuffer     *buffer);
+gboolean                meta_wayland_buffer_realize_egl_stream  (MetaWaylandBuffer     *buffer,
+                                                                 GError               **error);
 gboolean                meta_wayland_buffer_attach              (MetaWaylandBuffer     *buffer,
                                                                  GError               **error);
 CoglTexture *           meta_wayland_buffer_get_texture         (MetaWaylandBuffer     *buffer);
