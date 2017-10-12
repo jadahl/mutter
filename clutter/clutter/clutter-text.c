@@ -995,7 +995,7 @@ clutter_text_coords_to_position (ClutterText *self,
   return index_ + trailing;
 }
 
-gboolean
+static gboolean
 clutter_text_position_to_coords_internal (ClutterText *self,
                                           gint         position,
                                           gfloat      *x,
