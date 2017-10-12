@@ -2683,7 +2683,7 @@ clutter_text_get_preferred_width (ClutterActor *self,
   gfloat resource_scale;
 
   if (!clutter_actor_get_resource_scale (self, &resource_scale))
-    return;
+    resource_scale = 1;
 
   layout = clutter_text_create_layout (text, -1, -1);
   pango_layout_get_extents (layout, NULL, &logical_rect);
@@ -2740,7 +2740,7 @@ clutter_text_get_preferred_height (ClutterActor *self,
       gfloat resource_scale;
 
       if (!clutter_actor_get_resource_scale (self, &resource_scale))
-        return;
+        resource_scale = 1;
 
       if (priv->single_line_mode)
         for_width = -1;
