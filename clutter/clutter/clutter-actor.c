@@ -2515,9 +2515,6 @@ clutter_actor_set_allocation_internal (ClutterActor           *self,
           g_object_notify_by_pspec (obj, obj_props[PROP_CONTENT_BOX]);
         }
 
-      priv->needs_compute_resource_scale = TRUE;
-      clutter_actor_ensure_resource_scale (self);
-
       retval = TRUE;
     }
   else
@@ -10140,8 +10137,6 @@ clutter_actor_allocate (ClutterActor           *self,
 
   if (stage_allocation_changed)
     priv->needs_compute_resource_scale = TRUE;
-
-  clutter_actor_ensure_resource_scale (self);
 
   if (!stage_allocation_changed)
     {
