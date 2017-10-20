@@ -506,10 +506,7 @@ ensure_text_scale_pango_attributes (ClutterText    *self,
   g_return_if_fail (attributes != NULL);
 
   if (!clutter_actor_get_resource_scale (CLUTTER_ACTOR (self), &resource_scale))
-    return;
-
-  if (resource_scale == 1.0f)
-    return;
+    resource_scale = 1.0;
 
   if (*attributes)
     {
