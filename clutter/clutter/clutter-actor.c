@@ -17891,8 +17891,7 @@ clutter_actor_get_resource_scale (ClutterActor *self,
 
   g_return_val_if_fail (CLUTTER_IS_ACTOR (self), FALSE);
 
-  if (priv->needs_compute_resource_scale)
-    clutter_actor_update_resource_scale (self);
+  clutter_actor_ensure_resource_scale (self);
 
   if (!priv->needs_compute_resource_scale && resource_scale)
     {
