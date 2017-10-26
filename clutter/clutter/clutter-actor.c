@@ -17849,9 +17849,11 @@ clutter_actor_update_resource_scale (ClutterActor *self)
     {
       priv->resource_scale = resource_scale;
       priv->needs_compute_resource_scale = FALSE;
+
+      return old_resource_scale != resource_scale;
     }
 
-  return old_resource_scale != resource_scale;
+  return FALSE;
 }
 
 static void
