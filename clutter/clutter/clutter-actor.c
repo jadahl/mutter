@@ -17773,7 +17773,7 @@ _clutter_actor_get_resource_scale_for_rect (ClutterActor *self,
   if (max_scale == 0)
     return FALSE;
 
-  *resource_scale = max_scale;
+  *resource_scale = ceilf (max_scale);
 
   return TRUE;
 }
