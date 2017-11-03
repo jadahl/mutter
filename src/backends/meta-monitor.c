@@ -357,6 +357,21 @@ meta_monitor_get_connector_type (MetaMonitor *monitor)
 }
 
 static void
+meta_monitor_dispose (GObject *object)
+{
+  MetaMonitor *monitor = META_MONITOR (object);
+  MetaMonitorPrivate *priv = meta_monitor_get_instance_private (monitor);
+
+  if (priv->outputs)
+    {
+      g_list_free_full (priv->outputs, g_object_unref);
+      priv->outputs = NULL;
+    }
+
+  G_OBJECT_CLASS (meta_monitor_parent_class)->dispose (object);
+}
+
+static void
 meta_monitor_finalize (GObject *object)
 {
   MetaMonitor *monitor = META_MONITOR (object);
@@ -364,7 +379,6 @@ meta_monitor_finalize (GObject *object)
 
   g_hash_table_destroy (priv->mode_ids);
   g_list_free_full (priv->modes, (GDestroyNotify) meta_monitor_mode_free);
-  g_clear_pointer (&priv->outputs, g_list_free);
   meta_monitor_spec_free (priv->spec);
 
   G_OBJECT_CLASS (meta_monitor_parent_class)->finalize (object);
@@ -383,6 +397,7 @@ meta_monitor_class_init (MetaMonitorClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
+  object_class->dispose = meta_monitor_dispose;
   object_class->finalize = meta_monitor_finalize;
 }
 
@@ -498,7 +513,7 @@ meta_monitor_normal_new (MetaGpu    *gpu,
 
   monitor_priv->gpu = gpu;
 
-  monitor_priv->outputs = g_list_append (NULL, output);
+  monitor_priv->outputs = g_list_append (NULL, g_object_ref (output));
   monitor_priv->winsys_id = output->winsys_id;
   meta_monitor_generate_spec (monitor);
 
@@ -613,7 +628,8 @@ add_tiled_monitor_outputs (MetaGpu          *gpu,
       g_warn_if_fail (output->subpixel_order ==
                       monitor_tiled->origin_output->subpixel_order);
 
-      monitor_priv->outputs = g_list_append (monitor_priv->outputs, output);
+      monitor_priv->outputs = g_list_append (monitor_priv->outputs,
+                                             g_object_ref (output));
     }
 }
 
