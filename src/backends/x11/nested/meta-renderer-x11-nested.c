@@ -50,8 +50,11 @@ calculate_view_transform (MetaMonitorManager *monitor_manager,
 {
   MetaMonitor *main_monitor;
   MetaOutput *main_output;
+  MetaCrtc *crtc;
+
   main_monitor = meta_logical_monitor_get_monitors (logical_monitor)->data;
   main_output = meta_monitor_get_main_output (main_monitor);
+  crtc = meta_output_get_assigned_crtc (main_output);
 
   /*
    * Pick any monitor and output and check; all CRTCs of a logical monitor will
@@ -59,7 +62,7 @@ calculate_view_transform (MetaMonitorManager *monitor_manager,
    */
 
   if (meta_monitor_manager_is_transform_handled (monitor_manager,
-                                                 main_output->crtc,
+                                                 crtc,
                                                  logical_monitor->transform))
     return META_MONITOR_TRANSFORM_NORMAL;
   else

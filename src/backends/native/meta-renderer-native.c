@@ -1714,6 +1714,7 @@ meta_renderer_native_create_surface_egl_device (CoglOnscreen       *onscreen,
   EGLDisplay egl_display = renderer_gpu_data->egl_display;
   MetaMonitor *monitor;
   MetaOutput *output;
+  MetaCrtc *crtc;
   EGLConfig egl_config;
   EGLStreamKHR egl_stream;
   EGLSurface egl_surface;
@@ -1737,6 +1738,7 @@ meta_renderer_native_create_surface_egl_device (CoglOnscreen       *onscreen,
 
   monitor = meta_logical_monitor_get_monitors (logical_monitor)->data;
   output = meta_monitor_get_main_output (monitor);
+  crtc = meta_output_get_assigned_crtc (output);
 
   /*
    * An "logical_monitor" may have multiple outputs/crtcs in case its tiled,
@@ -1744,7 +1746,7 @@ meta_renderer_native_create_surface_egl_device (CoglOnscreen       *onscreen,
    * lets pass the first one.
    */
   output_attribs[0] = EGL_DRM_CRTC_EXT;
-  output_attribs[1] = output->crtc->crtc_id;
+  output_attribs[1] = crtc->crtc_id;
   output_attribs[2] = EGL_NONE;
 
   if (!meta_egl_get_output_layers (egl, egl_display,
@@ -2341,8 +2343,11 @@ calculate_view_transform (MetaMonitorManager *monitor_manager,
 {
   MetaMonitor *main_monitor;
   MetaOutput *main_output;
+  MetaCrtc *crtc;
+
   main_monitor = meta_logical_monitor_get_monitors (logical_monitor)->data;
   main_output = meta_monitor_get_main_output (main_monitor);
+  crtc = meta_output_get_assigned_crtc (main_output);
 
   /*
    * Pick any monitor and output and check; all CRTCs of a logical monitor will
@@ -2350,7 +2355,7 @@ calculate_view_transform (MetaMonitorManager *monitor_manager,
    */
 
   if (meta_monitor_manager_is_transform_handled (monitor_manager,
-                                                 main_output->crtc,
+                                                 crtc,
                                                  logical_monitor->transform))
     return META_MONITOR_TRANSFORM_NORMAL;
   else
