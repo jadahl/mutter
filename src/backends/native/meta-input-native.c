@@ -990,71 +990,6 @@ translate_scroll_source (enum libinput_pointer_axis_source source)
     }
 }
 
-static ClutterInputDeviceToolType
-translate_tool_type (struct libinput_tablet_tool *libinput_tool)
-{
-  enum libinput_tablet_tool_type tool;
-
-  tool = libinput_tablet_tool_get_type (libinput_tool);
-
-  switch (tool)
-    {
-    case LIBINPUT_TABLET_TOOL_TYPE_PEN:
-      return CLUTTER_INPUT_DEVICE_TOOL_PEN;
-    case LIBINPUT_TABLET_TOOL_TYPE_ERASER:
-      return CLUTTER_INPUT_DEVICE_TOOL_ERASER;
-    case LIBINPUT_TABLET_TOOL_TYPE_BRUSH:
-      return CLUTTER_INPUT_DEVICE_TOOL_BRUSH;
-    case LIBINPUT_TABLET_TOOL_TYPE_PENCIL:
-      return CLUTTER_INPUT_DEVICE_TOOL_PENCIL;
-    case LIBINPUT_TABLET_TOOL_TYPE_AIRBRUSH:
-      return CLUTTER_INPUT_DEVICE_TOOL_AIRBRUSH;
-    case LIBINPUT_TABLET_TOOL_TYPE_MOUSE:
-      return CLUTTER_INPUT_DEVICE_TOOL_MOUSE;
-    case LIBINPUT_TABLET_TOOL_TYPE_LENS:
-      return CLUTTER_INPUT_DEVICE_TOOL_LENS;
-    default:
-      return CLUTTER_INPUT_DEVICE_TOOL_NONE;
-    }
-}
-
-static void
-input_device_update_tool (ClutterInputDevice          *input_device,
-                          struct libinput_tablet_tool *libinput_tool)
-{
-  MetaInputDeviceNative *device_native =
-    META_INPUT_DEVICE_NATIVE (input_device);
-  ClutterInputDeviceTool *tool = NULL;
-  ClutterInputDeviceToolType tool_type;
-  uint64_t tool_serial;
-
-  if (libinput_tool)
-    {
-      tool_serial = libinput_tablet_tool_get_serial (libinput_tool);
-      tool_type = translate_tool_type (libinput_tool);
-      tool = clutter_input_device_lookup_tool (input_device,
-                                               tool_serial, tool_type);
-
-      if (!tool)
-        {
-          MetaInputDeviceToolNative *tool_native;
-
-          tool_native = meta_input_device_tool_native_new (libinput_tool,
-                                                           tool_serial,
-                                                           tool_type);
-          tool = CLUTTER_INPUT_DEVICE_TOOL (tool_native);
-          clutter_input_device_add_tool (input_device, tool);
-        }
-    }
-
-  if (device_native->last_tool != tool)
-    {
-      device_native->last_tool = tool;
-      g_signal_emit_by_name (clutter_device_manager_get_default (),
-                             "tool-changed", input_device, tool);
-    }
-}
-
 static double *
 translate_tablet_axes (struct libinput_event_tablet_tool *tablet_event,
                        ClutterInputDeviceTool            *tool)
@@ -1601,18 +1536,21 @@ process_device_event (MetaInputNative       *input_native,
           libinput_event_get_tablet_tool_event (event);
         struct libinput_tablet_tool *libinput_tool = NULL;
         enum libinput_tablet_tool_proximity_state state;
+        MetaInputDeviceNative *device_native;
 
         state = libinput_event_tablet_tool_get_proximity_state (tablet_event);
         time = libinput_event_tablet_tool_get_time_usec (tablet_event);
         device = libinput_device_get_user_data (libinput_device);
+        device_native = META_INPUT_DEVICE_NATIVE (device);
 
         libinput_tool = libinput_event_tablet_tool_get_tool (tablet_event);
 
         if (state == LIBINPUT_TABLET_TOOL_PROXIMITY_STATE_IN)
-          input_device_update_tool (device, libinput_tool);
+          meta_input_device_native_update_last_tool (device_native,
+                                                     libinput_tool);
         notify_proximity (device, time, state == LIBINPUT_TABLET_TOOL_PROXIMITY_STATE_IN);
         if (state == LIBINPUT_TABLET_TOOL_PROXIMITY_STATE_OUT)
-          input_device_update_tool (device, NULL);
+          meta_input_device_native_update_last_tool (device_native, NULL);
         break;
       }
     case LIBINPUT_EVENT_TABLET_TOOL_BUTTON:

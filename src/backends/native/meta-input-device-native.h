@@ -60,6 +60,9 @@ MetaSeatNative * meta_input_device_native_get_seat (MetaInputDeviceNative *devic
 
 struct libinput_device * meta_input_device_native_get_libinput_device (MetaInputDeviceNative *device_native);
 
+void meta_input_device_native_update_last_tool (MetaInputDeviceNative       *device_native,
+                                                struct libinput_tablet_tool *libinput_tool);
+
 void meta_input_device_native_update_leds (MetaInputDeviceNative *device_native,
                                            enum libinput_led      leds);
 

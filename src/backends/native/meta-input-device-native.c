@@ -275,6 +275,70 @@ meta_input_device_native_get_seat (MetaInputDeviceNative *device_native)
   return device_native->seat_native;
 }
 
+static ClutterInputDeviceToolType
+translate_tool_type (struct libinput_tablet_tool *libinput_tool)
+{
+  enum libinput_tablet_tool_type tool;
+
+  tool = libinput_tablet_tool_get_type (libinput_tool);
+
+  switch (tool)
+    {
+    case LIBINPUT_TABLET_TOOL_TYPE_PEN:
+      return CLUTTER_INPUT_DEVICE_TOOL_PEN;
+    case LIBINPUT_TABLET_TOOL_TYPE_ERASER:
+      return CLUTTER_INPUT_DEVICE_TOOL_ERASER;
+    case LIBINPUT_TABLET_TOOL_TYPE_BRUSH:
+      return CLUTTER_INPUT_DEVICE_TOOL_BRUSH;
+    case LIBINPUT_TABLET_TOOL_TYPE_PENCIL:
+      return CLUTTER_INPUT_DEVICE_TOOL_PENCIL;
+    case LIBINPUT_TABLET_TOOL_TYPE_AIRBRUSH:
+      return CLUTTER_INPUT_DEVICE_TOOL_AIRBRUSH;
+    case LIBINPUT_TABLET_TOOL_TYPE_MOUSE:
+      return CLUTTER_INPUT_DEVICE_TOOL_MOUSE;
+    case LIBINPUT_TABLET_TOOL_TYPE_LENS:
+      return CLUTTER_INPUT_DEVICE_TOOL_LENS;
+    default:
+      return CLUTTER_INPUT_DEVICE_TOOL_NONE;
+    }
+}
+
+void
+meta_input_device_native_update_last_tool (MetaInputDeviceNative       *device_native,
+                                           struct libinput_tablet_tool *libinput_tool)
+{
+  ClutterInputDevice *input_device = CLUTTER_INPUT_DEVICE (device_native);
+  ClutterInputDeviceTool *tool = NULL;
+  ClutterInputDeviceToolType tool_type;
+  uint64_t tool_serial;
+
+  if (libinput_tool)
+    {
+      tool_serial = libinput_tablet_tool_get_serial (libinput_tool);
+      tool_type = translate_tool_type (libinput_tool);
+      tool = clutter_input_device_lookup_tool (input_device,
+                                               tool_serial, tool_type);
+
+      if (!tool)
+        {
+          MetaInputDeviceToolNative *tool_native;
+
+          tool_native = meta_input_device_tool_native_new (libinput_tool,
+                                                           tool_serial,
+                                                           tool_type);
+          tool = CLUTTER_INPUT_DEVICE_TOOL (tool_native);
+          clutter_input_device_add_tool (input_device, tool);
+        }
+    }
+
+  if (device_native->last_tool != tool)
+    {
+      device_native->last_tool = tool;
+      g_signal_emit_by_name (clutter_device_manager_get_default (),
+                             "tool-changed", input_device, tool);
+    }
+}
+
 void
 meta_input_device_native_update_leds (MetaInputDeviceNative *device_native,
                                       enum libinput_led      leds)
