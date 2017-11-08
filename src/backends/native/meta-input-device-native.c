@@ -326,8 +326,12 @@ meta_input_device_native_update_last_tool (MetaInputDeviceNative       *device_n
 
   if (device_native->last_tool != tool)
     {
+      MetaSeat *seat =
+        meta_input_device_get_seat (META_INPUT_DEVICE (device_native));
+      MetaInput *input = meta_seat_get_input (seat);
+
       device_native->last_tool = tool;
-      g_signal_emit_by_name (clutter_device_manager_get_default (),
+      g_signal_emit_by_name (input,
                              "tool-changed", input_device, tool);
     }
 }
