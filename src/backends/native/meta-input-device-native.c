@@ -204,6 +204,7 @@ meta_input_device_native_new (MetaSeatNative         *seat_native,
   device_native = g_object_new (META_TYPE_INPUT_DEVICE_NATIVE,
                                 "id", device_id,
                                 "name", libinput_device_get_name (libinput_device),
+                                "seat", seat_native,
                                 "device-manager", input,
                                 "device-type", type,
                                 "device-mode", CLUTTER_INPUT_MODE_SLAVE,
@@ -216,7 +217,6 @@ meta_input_device_native_new (MetaSeatNative         *seat_native,
                                 "device-node", node_path,
                                 NULL);
 
-  device_native->seat_native = seat_native;
   device_native->libinput_device = libinput_device;
 
   libinput_device_set_user_data (libinput_device, device_native);
@@ -258,21 +258,14 @@ meta_input_device_native_new_virtual (MetaSeatNative         *seat_native,
   device_native = g_object_new (META_TYPE_INPUT_DEVICE_NATIVE,
                                 "id", device_id,
                                 "name", name,
+                                "seat", seat_native,
                                 "device-manager", input_native,
                                 "device-type", type,
                                 "device-mode", mode,
                                 "enabled", TRUE,
                                 NULL);
 
-  device_native->seat_native = seat_native;
-
   return device_native;
-}
-
-MetaSeatNative *
-meta_input_device_native_get_seat (MetaInputDeviceNative *device_native)
-{
-  return device_native->seat_native;
 }
 
 static ClutterInputDeviceToolType

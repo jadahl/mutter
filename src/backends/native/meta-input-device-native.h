@@ -41,7 +41,6 @@ struct _MetaInputDeviceNative
   MetaInputDevice parent;
 
   struct libinput_device *libinput_device;
-  MetaSeatNative *seat_native;
   ClutterInputDeviceTool *last_tool;
 
   cairo_matrix_t device_matrix;
@@ -55,8 +54,6 @@ MetaInputDeviceNative * meta_input_device_native_new (MetaSeatNative         *se
 MetaInputDeviceNative * meta_input_device_native_new_virtual (MetaSeatNative         *seat,
                                                               ClutterInputDeviceType  type,
                                                               ClutterInputMode        mode);
-
-MetaSeatNative * meta_input_device_native_get_seat (MetaInputDeviceNative *device_native);
 
 struct libinput_device * meta_input_device_native_get_libinput_device (MetaInputDeviceNative *device_native);
 

@@ -26,6 +26,8 @@
 #include "clutter/clutter.h"
 #include "clutter/clutter-device-manager-private.h"
 
+typedef struct _MetaSeat MetaSeat;
+
 #define META_TYPE_INPUT_DEVICE (meta_input_device_get_type ())
 G_DECLARE_DERIVABLE_TYPE (MetaInputDevice, meta_input_device,
                           META, INPUT_DEVICE, ClutterInputDevice)
@@ -34,5 +36,7 @@ struct _MetaInputDeviceClass
 {
   ClutterInputDeviceClass parent_class;
 };
+
+MetaSeat * meta_input_device_get_seat (MetaInputDevice *input_device);
 
 #endif /* META_INPUT_DEVICE_H */

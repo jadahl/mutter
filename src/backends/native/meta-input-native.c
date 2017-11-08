@@ -247,9 +247,8 @@ queue_event:
       ClutterModifierType event_state;
       ClutterInputDevice *device =
         clutter_event_get_source_device (event);
-      MetaInputDeviceNative *device_native =
-        META_INPUT_DEVICE_NATIVE (device);
-      MetaSeatNative *seat_native = device_native->seat_native;
+      MetaSeat *seat = meta_input_device_get_seat (META_INPUT_DEVICE (device));
+      MetaSeatNative *seat_native = META_SEAT_NATIVE (seat);
 
       /* Drop events if we don't have any stage to forward them to */
       if (!_clutter_input_device_get_stage (device))
@@ -374,7 +373,8 @@ new_absolute_motion_event (ClutterInputDevice *input_device,
 {
   MetaInputDeviceNative *device_native =
     META_INPUT_DEVICE_NATIVE (input_device);
-  MetaSeatNative *seat_native = device_native->seat_native;
+  MetaSeat *seat = meta_input_device_get_seat (META_INPUT_DEVICE (input_device));
+  MetaSeatNative *seat_native = META_SEAT_NATIVE (seat);
   MetaInput *input = meta_seat_get_input (META_SEAT (seat_native));
   MetaInputNative *input_native = META_INPUT_NATIVE (input);
   ClutterStage *stage = _clutter_input_device_get_stage (input_device);
@@ -454,7 +454,9 @@ notify_absolute_motion (ClutterInputDevice *input_device,
 static MetaSeatNative *
 seat_from_device (ClutterInputDevice *device)
 {
-  return META_INPUT_DEVICE_NATIVE (device)->seat_native;
+  MetaSeat *seat = meta_input_device_get_seat (META_INPUT_DEVICE (device));
+
+  return META_SEAT_NATIVE (seat);
 }
 
 static void

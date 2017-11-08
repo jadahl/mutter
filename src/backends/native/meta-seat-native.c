@@ -606,7 +606,7 @@ notify_scroll (ClutterInputDevice       *input_device,
                ClutterScrollFinishFlags  flags,
                gboolean                  emulated)
 {
-  MetaInputDeviceNative *device_native;
+  MetaSeat *seat;
   MetaSeatNative *seat_native;
   ClutterStage *stage;
   ClutterEvent *event = NULL;
@@ -618,8 +618,8 @@ notify_scroll (ClutterInputDevice       *input_device,
   if (stage == NULL)
     return;
 
-  device_native = META_INPUT_DEVICE_NATIVE (input_device);
-  seat_native = device_native->seat_native;
+  seat = meta_input_device_get_seat (META_INPUT_DEVICE (input_device));
+  seat_native = META_SEAT_NATIVE (seat);
 
   event = clutter_event_new (CLUTTER_SCROLL);
 
@@ -659,7 +659,7 @@ notify_discrete_scroll (ClutterInputDevice     *input_device,
                         ClutterScrollSource     scroll_source,
                         gboolean                emulated)
 {
-  MetaInputDeviceNative *device_native;
+  MetaSeat *seat;
   MetaSeatNative *seat_native;
   ClutterStage *stage;
   ClutterEvent *event = NULL;
@@ -673,8 +673,8 @@ notify_discrete_scroll (ClutterInputDevice     *input_device,
   if (stage == NULL)
     return;
 
-  device_native = META_INPUT_DEVICE_NATIVE (input_device);
-  seat_native = device_native->seat_native;
+  seat = meta_input_device_get_seat (META_INPUT_DEVICE (input_device));
+  seat_native = META_SEAT_NATIVE (seat);
 
   event = clutter_event_new (CLUTTER_SCROLL);
 
