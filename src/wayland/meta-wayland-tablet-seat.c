@@ -37,7 +37,6 @@
 #include "meta-wayland-tablet-pad.h"
 
 #ifdef HAVE_NATIVE_BACKEND
-#include <clutter/evdev/clutter-evdev.h>
 #include "backends/native/meta-backend-native.h"
 #endif
 

@@ -123,6 +123,7 @@ void clutter_virtual_input_device_notify_discrete_scroll (ClutterVirtualInputDev
 CLUTTER_AVAILABLE_IN_ALL
 ClutterDeviceManager * clutter_virtual_input_device_get_manager (ClutterVirtualInputDevice *virtual_device);
 
+CLUTTER_AVAILABLE_IN_MUTTER
 int clutter_virtual_input_device_get_device_type (ClutterVirtualInputDevice *virtual_device);
 
 #endif /* __CLUTTER_VIRTUAL_INPUT_DEVICE_H__ */

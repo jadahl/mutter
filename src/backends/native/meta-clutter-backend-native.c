@@ -29,6 +29,7 @@
 #include "backends/meta-backend-private.h"
 #include "backends/meta-renderer.h"
 #include "backends/native/meta-clutter-backend-native.h"
+#include "backends/native/meta-input-native.h"
 #include "backends/native/meta-stage-native.h"
 #include "clutter/clutter.h"
 #include "meta/meta-backend.h"
@@ -50,6 +51,14 @@ meta_clutter_backend_native_get_stage_native (ClutterBackend *backend)
     META_CLUTTER_BACKEND_NATIVE (backend);
 
   return clutter_backend_native->stage_native;
+}
+
+static void
+meta_clutter_backend_native_init_events (ClutterBackend *clutter_backend)
+{
+  clutter_backend->device_manager = g_object_new (META_TYPE_INPUT_NATIVE,
+                                                  "backend", clutter_backend,
+                                                  NULL);
 }
 
 static CoglRenderer *
@@ -89,6 +98,7 @@ meta_clutter_backend_native_class_init (MetaClutterBackendNativeClass *klass)
 {
   ClutterBackendClass *clutter_backend_class = CLUTTER_BACKEND_CLASS (klass);
 
+  clutter_backend_class->init_events = meta_clutter_backend_native_init_events;
   clutter_backend_class->get_renderer = meta_clutter_backend_native_get_renderer;
   clutter_backend_class->create_stage = meta_clutter_backend_native_create_stage;
 }

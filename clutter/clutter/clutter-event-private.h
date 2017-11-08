@@ -5,10 +5,12 @@
 
 G_BEGIN_DECLS
 
+CLUTTER_AVAILABLE_IN_MUTTER
 void            _clutter_event_set_pointer_emulated     (ClutterEvent       *event,
                                                          gboolean            is_emulated);
 
 /* Reinjecting queued events for processing */
+CLUTTER_AVAILABLE_IN_MUTTER
 void            _clutter_process_event                  (ClutterEvent       *event);
 
 gboolean        _clutter_event_process_filters          (ClutterEvent       *event);
@@ -17,10 +19,13 @@ gboolean        _clutter_event_process_filters          (ClutterEvent       *eve
 void            _clutter_clear_events_queue             (void);
 void            _clutter_clear_events_queue_for_stage   (ClutterStage       *stage);
 
+CLUTTER_AVAILABLE_IN_MUTTER
 void            _clutter_event_set_platform_data        (ClutterEvent       *event,
                                                          gpointer            data);
+CLUTTER_AVAILABLE_IN_MUTTER
 gpointer        _clutter_event_get_platform_data        (const ClutterEvent *event);
 
+CLUTTER_AVAILABLE_IN_MUTTER
 void            _clutter_event_set_state_full           (ClutterEvent        *event,
 							 ClutterModifierType  button_state,
 							 ClutterModifierType  base_state,
@@ -28,6 +33,7 @@ void            _clutter_event_set_state_full           (ClutterEvent        *ev
 							 ClutterModifierType  locked_state,
 							 ClutterModifierType  effective_state);
 
+CLUTTER_AVAILABLE_IN_MUTTER
 void            _clutter_event_push                     (const ClutterEvent *event,
                                                          gboolean            do_copy);
 

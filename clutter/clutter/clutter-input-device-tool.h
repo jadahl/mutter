@@ -47,6 +47,8 @@ struct _ClutterInputDeviceTool
   GObject parent_instance;
 };
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ClutterInputDeviceTool, g_object_unref)
+
 struct _ClutterInputDeviceToolClass
 {
   GObjectClass parent_class;

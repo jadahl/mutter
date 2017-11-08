@@ -68,9 +68,6 @@
 #ifdef CLUTTER_INPUT_X11
 #include "x11/clutter-backend-x11.h"
 #endif
-#ifdef CLUTTER_INPUT_EVDEV
-#include "evdev/clutter-device-manager-evdev.h"
-#endif
 #ifdef CLUTTER_WINDOWING_EGL
 #include "egl/clutter-backend-eglnative.h"
 #endif
@@ -542,19 +539,6 @@ clutter_backend_real_init_events (ClutterBackend *backend)
       (input_backend == NULL || input_backend == I_(CLUTTER_INPUT_X11)))
     {
       _clutter_backend_x11_events_init (backend);
-    }
-  else
-#endif
-#ifdef CLUTTER_INPUT_EVDEV
-  /* Evdev can be used regardless of the windowing system */
-  if ((input_backend != NULL && strcmp (input_backend, CLUTTER_INPUT_EVDEV) == 0)
-#ifdef CLUTTER_WINDOWING_EGL
-      /* but we do want to always use it for EGL native */
-      || clutter_check_windowing_backend (CLUTTER_WINDOWING_EGL)
-#endif
-      )
-    {
-      _clutter_events_evdev_init (backend);
     }
   else
 #endif

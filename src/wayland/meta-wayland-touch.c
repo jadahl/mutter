@@ -25,13 +25,14 @@
 
 #include <glib.h>
 #include <string.h>
-#include <clutter/evdev/clutter-evdev.h>
 
 #include "meta-surface-actor-wayland.h"
 #include "meta-wayland-private.h"
+#include "backends/meta-seat.h"
 
 #ifdef HAVE_NATIVE_BACKEND
 #include "backends/native/meta-backend-native.h"
+#include "backends/native/meta-input-native.h"
 #endif
 
 G_DEFINE_TYPE (MetaWaylandTouch, meta_wayland_touch,
@@ -184,7 +185,7 @@ touch_get_info (MetaWaylandTouch     *touch,
   if (!touch_info && create)
     {
       touch_info = g_new0 (MetaWaylandTouchInfo, 1);
-      touch_info->slot = clutter_evdev_event_sequence_get_slot (sequence);
+      touch_info->slot = meta_seat_get_sequence_slot (sequence);
       g_hash_table_insert (touch->touches, sequence, touch_info);
     }
 
@@ -387,7 +388,7 @@ check_send_frame_event (MetaWaylandTouch   *touch,
   gint32 slot;
 
   sequence = clutter_event_get_event_sequence (event);
-  slot = clutter_evdev_event_sequence_get_slot (sequence);
+  slot = meta_seat_get_sequence_slot (sequence);
   touch->frame_slots &= ~(1 << slot);
 
   if (touch->frame_slots == 0)
@@ -473,8 +474,8 @@ meta_wayland_touch_cancel (MetaWaylandTouch *touch)
 
 #ifdef HAVE_NATIVE_BACKEND
 static gboolean
-evdev_filter_func (struct libinput_event *event,
-                   gpointer               data)
+libinput_filter_func (struct libinput_event *event,
+                      gpointer               data)
 {
   MetaWaylandTouch *touch = data;
 
@@ -528,7 +529,14 @@ meta_wayland_touch_enable (MetaWaylandTouch *touch)
 #ifdef HAVE_NATIVE_BACKEND
   MetaBackend *backend = meta_get_backend ();
   if (META_IS_BACKEND_NATIVE (backend))
-    clutter_evdev_add_filter (evdev_filter_func, touch, NULL);
+    {
+      MetaInputNative *input_native =
+        META_INPUT_NATIVE (meta_backend_get_input (backend));
+
+      meta_input_native_add_filter (input_native,
+                                    libinput_filter_func,
+                                    touch, NULL);
+    }
 #endif
 }
 
@@ -537,8 +545,16 @@ meta_wayland_touch_disable (MetaWaylandTouch *touch)
 {
 #ifdef HAVE_NATIVE_BACKEND
   MetaBackend *backend = meta_get_backend ();
+
   if (META_IS_BACKEND_NATIVE (backend))
-    clutter_evdev_remove_filter (evdev_filter_func, touch);
+    {
+      MetaInputNative *input_native =
+        META_INPUT_NATIVE (meta_backend_get_input (backend));
+
+      meta_input_native_remove_filter (input_native,
+                                       libinput_filter_func,
+                                       touch);
+    }
 #endif
 
   meta_wayland_touch_cancel (touch);

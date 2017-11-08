@@ -119,6 +119,10 @@ libmutter_@LIBMUTTER_API_VERSION@_la_SOURCES =	\
 	backends/meta-idle-monitor-private.h	\
 	backends/meta-idle-monitor-dbus.c	\
 	backends/meta-idle-monitor-dbus.h	\
+	backends/meta-input.c			\
+	backends/meta-input.h			\
+	backends/meta-input-device.c		\
+	backends/meta-input-device.h		\
 	backends/meta-input-settings.c		\
 	backends/meta-input-settings-private.h	\
 	backends/meta-logical-monitor.c		\
@@ -144,6 +148,8 @@ libmutter_@LIBMUTTER_API_VERSION@_la_SOURCES =	\
 	backends/meta-pointer-constraint.h	\
 	backends/meta-settings.c		\
 	backends/meta-settings-private.h	\
+	backends/meta-seat.c			\
+	backends/meta-seat.h			\
 	backends/meta-stage.h			\
 	backends/meta-stage.c			\
 	backends/meta-renderer.c		\
@@ -466,6 +472,14 @@ libmutter_@LIBMUTTER_API_VERSION@_la_SOURCES +=		\
 	backends/native/meta-gpu-kms.h			\
 	backends/native/meta-idle-monitor-native.c	\
 	backends/native/meta-idle-monitor-native.h	\
+	backends/native/meta-input-native.c		\
+	backends/native/meta-input-native.h		\
+	backends/native/meta-input-device-native.c	\
+	backends/native/meta-input-device-native.h	\
+	backends/native/meta-input-device-tool-native.c	\
+	backends/native/meta-input-device-tool-native.h	\
+	backends/native/meta-input-event-native.c	\
+	backends/native/meta-input-event-native.h	\
 	backends/native/meta-input-settings-native.c	\
 	backends/native/meta-input-settings-native.h	\
 	backends/native/meta-monitor-manager-kms.c	\
@@ -478,8 +492,14 @@ libmutter_@LIBMUTTER_API_VERSION@_la_SOURCES +=		\
 	backends/native/meta-renderer-native.h		\
 	backends/native/meta-renderer-native-gles3.c	\
 	backends/native/meta-renderer-native-gles3.h	\
+	backends/native/meta-seat-native.c		\
+	backends/native/meta-seat-native.h		\
 	backends/native/meta-stage-native.c		\
 	backends/native/meta-stage-native.h		\
+	backends/native/meta-virtual-input-device-native.c	\
+	backends/native/meta-virtual-input-device-native.h	\
+	backends/native/meta-xkb.c			\
+	backends/native/meta-xkb.h			\
 	backends/native/dbus-utils.c			\
 	backends/native/dbus-utils.h			\
 	$(NULL)

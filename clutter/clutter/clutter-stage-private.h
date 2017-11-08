@@ -22,15 +22,16 @@
 #ifndef __CLUTTER_STAGE_PRIVATE_H__
 #define __CLUTTER_STAGE_PRIVATE_H__
 
-#include <clutter/clutter-stage-window.h>
+#include <clutter/clutter.h>
 #include <clutter/clutter-stage.h>
+#include <clutter/clutter-stage-window.h>
 #include <clutter/clutter-input-device.h>
-#include <clutter/clutter-private.h>
 
 #include <cogl/cogl.h>
 
 G_BEGIN_DECLS
 
+typedef struct _ClutterPlane ClutterPlane;
 typedef struct _ClutterStageQueueRedrawEntry ClutterStageQueueRedrawEntry;
 
 /* stage */
@@ -63,6 +64,7 @@ void                _clutter_stage_maybe_relayout        (ClutterActor          
 gboolean            _clutter_stage_needs_update          (ClutterStage          *stage);
 gboolean            _clutter_stage_do_update             (ClutterStage          *stage);
 
+CLUTTER_AVAILABLE_IN_MUTTER
 void     _clutter_stage_queue_event                       (ClutterStage *stage,
                                                            ClutterEvent *event,
                                                            gboolean      copy_event);

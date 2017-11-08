@@ -47,6 +47,7 @@
 #endif
 
 #include "backends/meta-idle-monitor-private.h"
+#include "backends/meta-input.h"
 #include "backends/meta-logical-monitor.h"
 #include "backends/meta-monitor-manager-dummy.h"
 #include "backends/meta-settings-private.h"
@@ -726,6 +727,17 @@ meta_backend_get_settings (MetaBackend *backend)
   MetaBackendPrivate *priv = meta_backend_get_instance_private (backend);
 
   return priv->settings;
+}
+
+/**
+ * meta_backend_get_input: (skip)
+ */
+MetaInput *
+meta_backend_get_input (MetaBackend *backend)
+{
+  MetaBackendPrivate *priv = meta_backend_get_instance_private (backend);
+
+  return META_INPUT (priv->clutter_backend->device_manager);
 }
 
 #ifdef HAVE_REMOTE_DESKTOP

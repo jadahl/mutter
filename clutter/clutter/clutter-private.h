@@ -37,6 +37,7 @@
 #include "clutter-feature.h"
 #include "clutter-id-pool.h"
 #include "clutter-layout-manager.h"
+#include "clutter-main-private.h"
 #include "clutter-master-clock.h"
 #include "clutter-settings.h"
 #include "clutter-stage-manager.h"
@@ -183,9 +184,6 @@ typedef struct
 
 gboolean _clutter_threads_dispatch      (gpointer data);
 void     _clutter_threads_dispatch_free (gpointer data);
-
-void                    _clutter_threads_acquire_lock                   (void);
-void                    _clutter_threads_release_lock                   (void);
 
 ClutterMainContext *    _clutter_context_get_default                    (void);
 void                    _clutter_context_lock                           (void);

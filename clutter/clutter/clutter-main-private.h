@@ -3,7 +3,9 @@
  *
  * An OpenGL based 'interactive canvas' library.
  *
- * Copyright (C) 2016  Red Hat Inc.
+ * Authored By Matthew Allum  <mallum@openedhand.com>
+ *
+ * Copyright (C) 2006 OpenedHand
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,18 +20,16 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library. If not, see <http://www.gnu.org/licenses/>.
  *
- * Author: Jonas Ådahl <jadahl@gmail.com>
+ *
  */
 
-#ifndef __CLUTTER_VIRTUAL_INPUT_DEVICE_EVDEV_H__
-#define __CLUTTER_VIRTUAL_INPUT_DEVICE_EVDEV_H__
+#ifndef __CLUTTER_MAIN_PRIVATE_H__
+#define __CLUTTER_MAIN_PRIVATE_H__
 
-#include "clutter-virtual-input-device.h"
+CLUTTER_AVAILABLE_IN_MUTTER
+void                    _clutter_threads_acquire_lock                   (void);
 
-#define CLUTTER_TYPE_VIRTUAL_INPUT_DEVICE_EVDEV (clutter_virtual_input_device_evdev_get_type ())
-G_DECLARE_FINAL_TYPE (ClutterVirtualInputDeviceEvdev,
-                      clutter_virtual_input_device_evdev,
-                      CLUTTER, VIRTUAL_INPUT_DEVICE_EVDEV,
-                      ClutterVirtualInputDevice)
+CLUTTER_AVAILABLE_IN_MUTTER
+void                    _clutter_threads_release_lock                   (void);
 
-#endif /* __CLUTTER_VIRTUAL_INPUT_DEVICE_EVDEV_H__ */
+#endif /* __CLUTTER_MAIN_PRIVATE_H__ */

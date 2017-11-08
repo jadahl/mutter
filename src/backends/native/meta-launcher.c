@@ -24,10 +24,10 @@
 #include <gio/gunixfdlist.h>
 
 #include <clutter/clutter.h>
-#include <clutter/evdev/clutter-evdev.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <malloc.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -43,6 +43,7 @@
 
 #include "backends/meta-backend-private.h"
 #include "backends/native/meta-backend-native.h"
+#include "backends/native/meta-input-native.h"
 #include "meta-cursor-renderer-native.h"
 #include "meta-idle-monitor-native.h"
 #include "meta-renderer-native.h"
@@ -366,11 +367,11 @@ meta_launcher_new (GError **error)
   self->sysfs_fds = g_hash_table_new (NULL, NULL);
   self->session_active = TRUE;
 
-  clutter_evdev_set_seat_id (self->seat_id);
+  meta_input_native_set_seat_id (self->seat_id);
 
-  clutter_evdev_set_device_callbacks (on_evdev_device_open,
-                                      on_evdev_device_close,
-                                      self);
+  meta_input_native_set_device_callbacks (on_evdev_device_open,
+                                          on_evdev_device_close,
+                                          self);
 
   g_signal_connect (self->session_proxy, "notify::active", G_CALLBACK (on_active_changed), self);
 

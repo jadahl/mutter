@@ -468,34 +468,7 @@ backend_source_c_priv += $(cogl_source_c_priv)
 backend_source_h += $(glx_source_h)
 backend_source_c += $(glx_source_c)
 
-evdev_c_priv = \
-	evdev/clutter-device-manager-evdev.c	\
-	evdev/clutter-input-device-evdev.c	\
-	evdev/clutter-seat-evdev.c		\
-	evdev/clutter-virtual-input-device-evdev.c	\
-	evdev/clutter-event-evdev.c		\
-	evdev/clutter-input-device-tool-evdev.c	\
-	$(NULL)
-evdev_h_priv = \
-	evdev/clutter-device-manager-evdev.h	\
-	evdev/clutter-input-device-evdev.h	\
-	evdev/clutter-seat-evdev.h		\
-	evdev/clutter-input-device-tool-evdev.h	\
-	evdev/clutter-virtual-input-device-evdev.h	\
-	$(NULL)
-evdev_h = evdev/clutter-evdev.h
-
 if SUPPORT_WAYLAND
-backend_source_c_priv += $(evdev_c_priv)
-backend_source_h_priv += $(evdev_h_priv)
-backend_source_h += $(evdev_h)
-
-clutterevdev_includedir = $(clutter_includedir)/evdev
-clutterevdev_include_HEADERS = $(evdev_h)
-
-backend_source_c += evdev/clutter-xkb-utils.c
-backend_source_h_priv += evdev/clutter-xkb-utils.h
-
 # EGL backend rules
 egl_source_h = \
 	egl/clutter-egl-headers.h	\

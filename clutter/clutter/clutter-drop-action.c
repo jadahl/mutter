@@ -69,6 +69,7 @@
 #include "clutter-drag-action.h"
 #include "clutter-main.h"
 #include "clutter-marshal.h"
+#include "clutter-private.h"
 #include "clutter-stage-private.h"
 
 struct _ClutterDropActionPrivate
