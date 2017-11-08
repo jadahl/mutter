@@ -31,6 +31,18 @@
 #include "backends/native/meta-input-device-tool-native.h"
 #include "backends/native/meta-input-native.h"
 
+struct _MetaInputDeviceNative
+{
+  MetaInputDevice parent;
+
+  struct libinput_device *libinput_device;
+  ClutterInputDeviceTool *last_tool;
+
+  cairo_matrix_t device_matrix;
+  double device_aspect_ratio; /* w:h */
+  double output_ratio;        /* w:h */
+};
+
 G_DEFINE_TYPE (MetaInputDeviceNative, meta_input_device_native,
                META_TYPE_INPUT_DEVICE)
 
@@ -334,6 +346,12 @@ meta_input_device_native_update_last_tool (MetaInputDeviceNative       *device_n
       g_signal_emit_by_name (input,
                              "tool-changed", input_device, tool);
     }
+}
+
+ClutterInputDeviceTool *
+meta_input_device_native_get_last_tool (MetaInputDeviceNative *device_native)
+{
+  return device_native->last_tool;
 }
 
 void

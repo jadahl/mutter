@@ -36,18 +36,6 @@ G_DECLARE_FINAL_TYPE (MetaInputDeviceNative, meta_input_device_native,
                       META, INPUT_DEVICE_NATIVE,
                       MetaInputDevice)
 
-struct _MetaInputDeviceNative
-{
-  MetaInputDevice parent;
-
-  struct libinput_device *libinput_device;
-  ClutterInputDeviceTool *last_tool;
-
-  cairo_matrix_t device_matrix;
-  double device_aspect_ratio; /* w:h */
-  double output_ratio;        /* w:h */
-};
-
 MetaInputDeviceNative * meta_input_device_native_new (MetaSeatNative         *seat_native,
                                                       struct libinput_device *libinput_device);
 
@@ -56,6 +44,8 @@ MetaInputDeviceNative * meta_input_device_native_new_virtual (MetaSeatNative    
                                                               ClutterInputMode        mode);
 
 struct libinput_device * meta_input_device_native_get_libinput_device (MetaInputDeviceNative *device_native);
+
+ClutterInputDeviceTool * meta_input_device_native_get_last_tool (MetaInputDeviceNative *device_native);
 
 void meta_input_device_native_update_last_tool (MetaInputDeviceNative       *device_native,
                                                 struct libinput_tablet_tool *libinput_tool);

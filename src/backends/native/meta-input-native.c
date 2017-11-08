@@ -420,7 +420,10 @@ new_absolute_motion_event (ClutterInputDevice *input_device,
 
   if (clutter_input_device_get_device_type (input_device) == CLUTTER_TABLET_DEVICE)
     {
-      clutter_event_set_device_tool (event, device_native->last_tool);
+      ClutterInputDeviceTool *last_tool;
+
+      last_tool = meta_input_device_native_get_last_tool (device_native);
+      clutter_event_set_device_tool (event, last_tool);
       clutter_event_set_device (event, input_device);
     }
   else
@@ -635,6 +638,7 @@ notify_proximity (ClutterInputDevice *input_device,
     META_INPUT_DEVICE_NATIVE (input_device);
   MetaSeatNative *seat_native = seat_from_device (input_device);
   ClutterStage *stage;
+  ClutterInputDeviceTool *last_tool;
   ClutterEvent *event = NULL;
 
   /* We can drop the event on the floor if no stage has been
@@ -642,6 +646,8 @@ notify_proximity (ClutterInputDevice *input_device,
   stage = _clutter_input_device_get_stage (input_device);
   if (stage == NULL)
     return;
+
+  last_tool = meta_input_device_native_get_last_tool (device_native);
 
   if (in)
     event = clutter_event_new (CLUTTER_PROXIMITY_IN);
@@ -653,7 +659,7 @@ notify_proximity (ClutterInputDevice *input_device,
   event->proximity.time = us2ms (time_us);
   event->proximity.stage = CLUTTER_STAGE (stage);
   event->proximity.device = seat_native->core_pointer;
-  clutter_event_set_device_tool (event, device_native->last_tool);
+  clutter_event_set_device_tool (event, last_tool);
   clutter_event_set_device (event, seat_native->core_pointer);
   clutter_event_set_source_device (event, input_device);
 
@@ -1496,6 +1502,7 @@ process_device_event (MetaInputNative       *input_native,
         struct libinput_event_tablet_tool *tablet_event =
           libinput_event_get_tablet_tool_event (event);
         MetaInputDeviceNative *device_native;
+        ClutterInputDeviceTool *last_tool;
 
         device = libinput_device_get_user_data (libinput_device);
         device_native = META_INPUT_DEVICE_NATIVE (device);
@@ -1504,8 +1511,8 @@ process_device_event (MetaInputNative       *input_native,
         if (!stage)
           break;
 
-        axes = translate_tablet_axes (tablet_event,
-                                      device_native->last_tool);
+        last_tool = meta_input_device_native_get_last_tool (device_native);
+        axes = translate_tablet_axes (tablet_event, last_tool);
         if (!axes)
           break;
 
@@ -1515,8 +1522,8 @@ process_device_event (MetaInputNative       *input_native,
         time = libinput_event_tablet_tool_get_time_usec (tablet_event);
 
         if (clutter_input_device_get_mapping_mode (device) == CLUTTER_INPUT_DEVICE_MAPPING_RELATIVE ||
-            clutter_input_device_tool_get_tool_type (device_native->last_tool) == CLUTTER_INPUT_DEVICE_TOOL_MOUSE ||
-            clutter_input_device_tool_get_tool_type (device_native->last_tool) == CLUTTER_INPUT_DEVICE_TOOL_LENS)
+            clutter_input_device_tool_get_tool_type (last_tool) == CLUTTER_INPUT_DEVICE_TOOL_MOUSE ||
+            clutter_input_device_tool_get_tool_type (last_tool) == CLUTTER_INPUT_DEVICE_TOOL_LENS)
           {
             dx = libinput_event_tablet_tool_get_dx (tablet_event);
             dy = libinput_event_tablet_tool_get_dy (tablet_event);

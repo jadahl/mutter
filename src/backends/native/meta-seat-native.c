@@ -388,8 +388,10 @@ new_absolute_motion_event (MetaSeatNative     *seat_native,
     {
       MetaInputDeviceNative *device_native =
         META_INPUT_DEVICE_NATIVE (input_device);
+      ClutterInputDeviceTool *last_tool;
 
-      clutter_event_set_device_tool (event, device_native->last_tool);
+      last_tool = meta_input_device_native_get_last_tool (device_native);
+      clutter_event_set_device_tool (event, last_tool);
       clutter_event_set_device (event, input_device);
     }
   else
@@ -469,6 +471,7 @@ meta_seat_native_notify_button (MetaSeatNative     *seat_native,
                                 uint32_t            state)
 {
   MetaInputDeviceNative *device_native = (MetaInputDeviceNative *) input_device;
+  ClutterInputDeviceTool *last_tool;
   ClutterStage *stage;
   ClutterEvent *event = NULL;
   int button_nr;
@@ -566,13 +569,14 @@ meta_seat_native_notify_button (MetaSeatNative     *seat_native,
   clutter_event_set_device (event, seat_native->core_pointer);
   clutter_event_set_source_device (event, input_device);
 
-  if (device_native->last_tool)
+  last_tool = meta_input_device_native_get_last_tool (device_native);
+  if (last_tool)
     {
       MetaInputDeviceToolNative *last_tool_native;
       unsigned int mapped_button;
 
       /* Apply the button event code as per the tool mapping */
-      last_tool_native = META_INPUT_DEVICE_TOOL_NATIVE (device_native->last_tool);
+      last_tool_native = META_INPUT_DEVICE_TOOL_NATIVE (last_tool);
       mapped_button =
         meta_input_device_tool_native_get_button_code (last_tool_native,
                                                        button_nr);
@@ -584,7 +588,7 @@ meta_seat_native_notify_button (MetaSeatNative     *seat_native,
 
   if (clutter_input_device_get_device_type (input_device) == CLUTTER_TABLET_DEVICE)
     {
-      clutter_event_set_device_tool (event, device_native->last_tool);
+      clutter_event_set_device_tool (event, last_tool);
       clutter_event_set_device (event, input_device);
     }
   else
