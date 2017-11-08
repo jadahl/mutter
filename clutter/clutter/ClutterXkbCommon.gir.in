@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<repository version="1.2"
+            xmlns="http://www.gtk.org/introspection/core/1.0"
+            xmlns:c="http://www.gtk.org/introspection/c/1.0">
+  <namespace name="ClutterXkbCommon" version="1.0" shared-library="xkbcommon">
+    <alias name="KeySym" c:type="xkb_keysym_t">
+      <type name="uint32"/>
+    </alias>
+  </namespace>
+</repository>

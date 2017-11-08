@@ -195,7 +195,7 @@ CLUTTER_INPUT_BACKENDS=""
 CLUTTER_CONFIG_DEFINES=
 
 # base dependencies for core
-CLUTTER_BASE_PC_FILES="cairo-gobject >= $CAIRO_REQ_VERSION gio-2.0 >= glib_req_version atk >= $ATK_REQ_VERSION pangocairo >= $PANGO_REQ_VERSION json-glib-1.0 >= $JSON_GLIB_REQ_VERSION"
+CLUTTER_BASE_PC_FILES="cairo-gobject >= $CAIRO_REQ_VERSION gio-2.0 >= glib_req_version atk >= $ATK_REQ_VERSION pangocairo >= $PANGO_REQ_VERSION json-glib-1.0 >= $JSON_GLIB_REQ_VERSION xkbcommon"
 
 # private base dependencies
 CLUTTER_BASE_PC_FILES_PRIVATE=""
@@ -247,7 +247,7 @@ AS_IF([test "x$enable_wayland_egl_server" = "xyes"],
         CLUTTER_INPUT_BACKENDS="$CLUTTER_INPUT_BACKENDS evdev"
 
         SUPPORT_EVDEV=1
-        BACKEND_PC_FILES_PRIVATE="$BACKEND_PC_FILES_PRIVATE libudev >= $LIBUDEV_REQ_VERSION libinput >= $LIBINPUT_REQ_VERSION xkbcommon"
+        BACKEND_PC_FILES_PRIVATE="$BACKEND_PC_FILES_PRIVATE libudev >= $LIBUDEV_REQ_VERSION libinput >= $LIBINPUT_REQ_VERSION"
         AC_DEFINE([HAVE_EVDEV], [1], [Have evdev support for input handling])
       ])
 
@@ -785,6 +785,7 @@ AC_CONFIG_FILES([
         clutter/clutter-config.h
 	clutter/clutter-version.h
 	clutter/mutter-clutter-$LIBMUTTER_API_VERSION.pc:clutter/mutter-clutter.pc.in
+	clutter/ClutterXkbCommon-$LIBMUTTER_API_VERSION.gir:clutter/ClutterXkbCommon.gir.in
 
 	tests/Makefile
 	tests/accessibility/Makefile

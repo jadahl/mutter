@@ -618,6 +618,7 @@ install-exec-local:
 -include $(INTROSPECTION_MAKEFILE)
 
 INTROSPECTION_SCANNER_ARGS = \
+	--add-include-path=$(top_builddir)/clutter \
 	--add-include-path=$(top_builddir)/../cogl/cogl \
 	--add-include-path=$(top_builddir)/../cogl/cogl-pango
 INTROSPECTION_COMPILER_ARGS = \
@@ -639,7 +640,7 @@ Clutter_@LIBMUTTER_API_VERSION@_gir_FILES = \
 	$(deprecated_c) \
 	$(built_source_c)
 Clutter_@LIBMUTTER_API_VERSION@_gir_CFLAGS = $(AM_CPPFLAGS) $(CLUTTER_CFLAGS)
-Clutter_@LIBMUTTER_API_VERSION@_gir_INCLUDES = GL-1.0 GObject-2.0 cairo-1.0 Cogl-@LIBMUTTER_API_VERSION@ CoglPango-@LIBMUTTER_API_VERSION@ Atk-1.0 Json-1.0
+Clutter_@LIBMUTTER_API_VERSION@_gir_INCLUDES = GL-1.0 GObject-2.0 cairo-1.0 Cogl-@LIBMUTTER_API_VERSION@ CoglPango-@LIBMUTTER_API_VERSION@ ClutterXkbCommon-@LIBMUTTER_API_VERSION@ Atk-1.0 Json-1.0
 Clutter_@LIBMUTTER_API_VERSION@_gir_SCANNERFLAGS = \
 	--warn-all \
 	--c-include='clutter/clutter.h' \
@@ -680,12 +681,13 @@ INTROSPECTION_GIRS += ClutterX11-@LIBMUTTER_API_VERSION@.gir
 # INTROSPECTION_GIRDIR/INTROSPECTION_TYPELIBDIR aren't the right place to
 # install anything - we need to install inside our prefix.
 girdir = $(mutterlibdir)
-gir_DATA = $(INTROSPECTION_GIRS)
+gir_DATA = $(INTROSPECTION_GIRS) ClutterXkbCommon-@LIBMUTTER_API_VERSION@.gir
 
 typelibdir = $(mutterlibdir)
 typelib_DATA = $(INTROSPECTION_GIRS:.gir=.typelib)
 
 EXTRA_DIST += \
+	ClutterXkbCommon-@LIBMUTTER_API_VERSION@.gir	\
 	Makefile.am.marshal	\
 	Makefile.am.enums
 

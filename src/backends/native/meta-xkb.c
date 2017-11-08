@@ -50,10 +50,11 @@ meta_xkb_create_key_event_from_evdev (ClutterInputDevice *device,
                                       struct xkb_state   *xkb_state,
                                       uint32_t            button_state,
                                       uint32_t            time_ms,
-                                      xkb_keycode_t       key,
+                                      uint32_t            key,
                                       uint32_t            state)
 {
   ClutterEvent *event;
+  xkb_keycode_t keycode;
   xkb_keysym_t sym;
   const xkb_keysym_t *syms;
   char buffer[8];
@@ -68,9 +69,9 @@ meta_xkb_create_key_event_from_evdev (ClutterInputDevice *device,
    * 0, whereas X11's minimum keycode, for really stupid reasons, is 8.
    * So the evdev XKB rules are based on the keycodes all being shifted
    * upwards by 8. */
-  key += 8;
+  keycode = key + 8;
 
-  n = xkb_key_get_syms (xkb_state, key, &syms);
+  n = xkb_key_get_syms (xkb_state, keycode, &syms);
   if (n == 1)
     sym = syms[0];
   else
@@ -80,7 +81,7 @@ meta_xkb_create_key_event_from_evdev (ClutterInputDevice *device,
   event->key.stage = stage;
   event->key.time = time_ms;
   meta_xkb_set_event_state (event, xkb_state, button_state);
-  event->key.hardware_keycode = key;
+  event->key.hardware_keycode = keycode;
   event->key.keyval = sym;
   clutter_event_set_source_device (event, device);
 

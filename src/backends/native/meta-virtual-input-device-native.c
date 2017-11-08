@@ -256,17 +256,18 @@ meta_virtual_input_device_native_notify_key (ClutterVirtualInputDevice *virtual_
 }
 
 static gboolean
-pick_keycode_for_keyval_in_current_group (ClutterVirtualInputDevice *virtual_device,
-                                          guint                      keyval,
-                                          guint                     *keycode_out,
-                                          guint                     *level_out)
+pick_keycode_for_keysym_in_current_group (ClutterVirtualInputDevice *virtual_device,
+                                          xkb_keysym_t               keysym,
+                                          xkb_keycode_t             *keycode_out,
+                                          xkb_level_index_t         *level_out)
 {
   MetaVirtualInputDeviceNative *virtual_native =
     META_VIRTUAL_INPUT_DEVICE_NATIVE (virtual_device);
   ClutterDeviceManager *manager;
   struct xkb_keymap *xkb_keymap;
   struct xkb_state  *state;
-  guint keycode, layout;
+  xkb_layout_index_t layout;
+  xkb_keycode_t keycode;
   xkb_keycode_t min_keycode, max_keycode;
 
   manager = clutter_virtual_input_device_get_manager (virtual_device);
@@ -278,7 +279,7 @@ pick_keycode_for_keyval_in_current_group (ClutterVirtualInputDevice *virtual_dev
   max_keycode = xkb_keymap_max_keycode (xkb_keymap);
   for (keycode = min_keycode; keycode < max_keycode; keycode++)
     {
-      int n_levels, level;
+      xkb_level_index_t level, n_levels;
 
       n_levels = xkb_keymap_num_levels_for_key (xkb_keymap, keycode, layout);
       for (level = 0; level < n_levels; level++)
@@ -290,7 +291,7 @@ pick_keycode_for_keyval_in_current_group (ClutterVirtualInputDevice *virtual_dev
                                                      layout, level, &syms);
           for (sym = 0; sym < n_syms; sym++)
             {
-              if (syms[sym] == keyval)
+              if (syms[sym] == keysym)
                 {
                   *keycode_out = keycode;
                   if (level_out)
@@ -312,7 +313,9 @@ apply_level_modifiers (ClutterVirtualInputDevice *virtual_device,
 {
   MetaVirtualInputDeviceNative *virtual_native =
     META_VIRTUAL_INPUT_DEVICE_NATIVE (virtual_device);
-  guint keysym, keycode, evcode;
+  xkb_keysym_t keysym;
+  xkb_keycode_t keycode;
+  unsigned int evcode;
 
   if (level == 0)
     return;
@@ -331,7 +334,7 @@ apply_level_modifiers (ClutterVirtualInputDevice *virtual_device,
       return;
     }
 
-  if (!pick_keycode_for_keyval_in_current_group (virtual_device, keysym,
+  if (!pick_keycode_for_keysym_in_current_group (virtual_device, keysym,
                                                  &keycode, NULL))
     return;
 
@@ -348,21 +351,23 @@ apply_level_modifiers (ClutterVirtualInputDevice *virtual_device,
 static void
 meta_virtual_input_device_native_notify_keyval (ClutterVirtualInputDevice *virtual_device,
                                                 uint64_t                   time_us,
-                                                uint32_t                   keyval,
+                                                xkb_keysym_t               keysym,
                                                 ClutterKeyState            key_state)
 {
   MetaVirtualInputDeviceNative *virtual_native =
     META_VIRTUAL_INPUT_DEVICE_NATIVE (virtual_device);
   int key_count;
-  guint keycode = 0, level = 0, evcode = 0;
+  xkb_keycode_t keycode = 0;
+  xkb_level_index_t level = 0;
+  unsigned int evcode = 0;
 
   if (time_us == CLUTTER_CURRENT_TIME)
     time_us = g_get_monotonic_time ();
 
-  if (!pick_keycode_for_keyval_in_current_group (virtual_device,
-                                                 keyval, &keycode, &level))
+  if (!pick_keycode_for_keysym_in_current_group (virtual_device,
+                                                 keysym, &keycode, &level))
     {
-      g_warning ("No keycode found for keyval %x in current group", keyval);
+      g_warning ("No keycode found for keysym %x in current group", keysym);
       return;
     }
 

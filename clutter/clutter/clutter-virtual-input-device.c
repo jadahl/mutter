@@ -26,6 +26,7 @@
 #endif
 
 #include <glib-object.h>
+#include <xkbcommon/xkbcommon.h>
 
 #include "clutter-virtual-input-device.h"
 
@@ -106,13 +107,13 @@ clutter_virtual_input_device_notify_key (ClutterVirtualInputDevice *virtual_devi
 void
 clutter_virtual_input_device_notify_keyval (ClutterVirtualInputDevice *virtual_device,
                                             uint64_t                   time_us,
-                                            uint32_t                   keyval,
+                                            xkb_keysym_t               keysym,
                                             ClutterKeyState            key_state)
 {
   ClutterVirtualInputDeviceClass *klass =
     CLUTTER_VIRTUAL_INPUT_DEVICE_GET_CLASS (virtual_device);
 
-  klass->notify_keyval (virtual_device, time_us, keyval, key_state);
+  klass->notify_keyval (virtual_device, time_us, keysym, key_state);
 }
 
 void

@@ -26,6 +26,7 @@
 
 #include <glib-object.h>
 #include <stdint.h>
+#include <xkbcommon/xkbcommon.h>
 
 #include "clutter-device-manager.h"
 
@@ -74,7 +75,7 @@ struct _ClutterVirtualInputDeviceClass
                       ClutterKeyState            key_state);
   void (*notify_keyval) (ClutterVirtualInputDevice *virtual_device,
                          uint64_t                   time_us,
-                         uint32_t                   keyval,
+                         xkb_keysym_t               keysym,
                          ClutterKeyState            key_state);
 
   void (*notify_discrete_scroll) (ClutterVirtualInputDevice *virtual_device,
@@ -110,7 +111,7 @@ void clutter_virtual_input_device_notify_key (ClutterVirtualInputDevice *virtual
 CLUTTER_AVAILABLE_IN_ALL
 void clutter_virtual_input_device_notify_keyval (ClutterVirtualInputDevice *virtual_device,
                                                  uint64_t                   time_us,
-                                                 uint32_t                   keyval,
+                                                 xkb_keysym_t               keysym,
                                                  ClutterKeyState            key_state);
 
 CLUTTER_AVAILABLE_IN_ALL

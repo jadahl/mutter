@@ -81,12 +81,12 @@ clutter_virtual_input_device_x11_notify_key (ClutterVirtualInputDevice *virtual_
 static void
 clutter_virtual_input_device_x11_notify_keyval (ClutterVirtualInputDevice *virtual_device,
 						uint64_t                   time_us,
-						uint32_t                   keyval,
+						xkb_keysym_t               keysym,
 						ClutterKeyState            key_state)
 {
   KeyCode keycode;
 
-  keycode = XKeysymToKeycode (clutter_x11_get_default_display (), keyval);
+  keycode = XKeysymToKeycode (clutter_x11_get_default_display (), keysym);
   XTestFakeKeyEvent (clutter_x11_get_default_display (),
                      keycode, key_state == CLUTTER_KEY_STATE_PRESSED, 0);
 }
