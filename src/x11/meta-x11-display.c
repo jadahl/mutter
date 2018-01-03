@@ -87,8 +87,8 @@ static const char *net_wm_name = "Mutter";
 static char *get_screen_name (Display *xdisplay,
                               int      number);
 
-static void on_monitors_changed (MetaMonitorManager *monitor_manager,
-                                 MetaX11Display     *x11_display);
+static void on_monitors_changed_internal (MetaMonitorManager *monitor_manager,
+                                          MetaX11Display     *x11_display);
 
 static void update_cursor_theme (MetaX11Display *x11_display);
 static void unset_wm_check_hint (MetaX11Display *x11_display);
@@ -1190,8 +1190,8 @@ meta_x11_display_new (MetaDisplay *display, GError **error)
   meta_x11_display_init_group_prop_hooks (x11_display);
 
   g_signal_connect_object (monitor_manager,
-                           "monitors-changed",
-                           G_CALLBACK (on_monitors_changed),
+                           "monitors-changed-internal",
+                           G_CALLBACK (on_monitors_changed_internal),
                            x11_display,
                            0);
 
@@ -1663,8 +1663,8 @@ meta_x11_display_create_guard_window (MetaX11Display *x11_display)
 }
 
 static void
-on_monitors_changed (MetaMonitorManager *monitor_manager,
-                     MetaX11Display     *x11_display)
+on_monitors_changed_internal (MetaMonitorManager *monitor_manager,
+                              MetaX11Display     *x11_display)
 {
   int display_width, display_height;
 
