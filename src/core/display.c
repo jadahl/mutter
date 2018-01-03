@@ -167,7 +167,7 @@ static guint display_signals [LAST_SIGNAL] = { 0 };
  */
 static MetaDisplay *the_display = NULL;
 
-static void    on_monitors_changed       (MetaMonitorManager *manager,
+static void on_monitors_changed_internal (MetaMonitorManager *manager,
                                           MetaDisplay        *display);
 
 static void    prefs_changed_callback    (MetaPreference pref,
@@ -712,8 +712,8 @@ meta_display_open (void)
                                       g_int64_equal);
   display->wayland_windows = g_hash_table_new (NULL, NULL);
 
-  g_signal_connect (monitor_manager, "monitors-changed",
-                    G_CALLBACK (on_monitors_changed), display);
+  g_signal_connect (monitor_manager, "monitors-changed-internal",
+                    G_CALLBACK (on_monitors_changed_internal), display);
 
   meta_display_set_cursor (display, META_CURSOR_DEFAULT);
 
@@ -2972,8 +2972,8 @@ meta_display_resize_func (MetaWindow *window,
 }
 
 static void
-on_monitors_changed (MetaMonitorManager *manager,
-                     MetaDisplay        *display)
+on_monitors_changed_internal (MetaMonitorManager *manager,
+                              MetaDisplay        *display)
 {
   MetaBackend *backend;
   MetaCursorRenderer *cursor_renderer;
