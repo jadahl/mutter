@@ -28,8 +28,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "backends/meta-backend-private.h"
-
 #include "core/window-private.h"
 #include "core/workspace-private.h"
 
@@ -170,15 +168,16 @@ meta_workspace_manager_init (MetaWorkspaceManager *workspace_manager)
 {
 }
 
-static void
-reload_logical_monitors (MetaWorkspaceManager *workspace_manager)
+void
+meta_workspace_manager_reload_work_areas (MetaWorkspaceManager *workspace_manager)
 {
   GList *l;
 
-  for (l = workspace_manager->workspaces; l != NULL; l = l->next)
+  for (l = workspace_manager->workspaces; l; l = l->next)
     {
-      MetaWorkspace *space = l->data;
-      meta_workspace_invalidate_work_area (space);
+      MetaWorkspace *workspace = l->data;
+
+      meta_workspace_invalidate_work_area (workspace);
     }
 }
 
@@ -186,9 +185,6 @@ MetaWorkspaceManager *
 meta_workspace_manager_new (MetaDisplay *display)
 {
   MetaWorkspaceManager *workspace_manager;
-  MetaBackend *backend = meta_get_backend ();
-  MetaMonitorManager *monitor_manager
-    = meta_backend_get_monitor_manager (backend);
 
   workspace_manager = g_object_new (META_TYPE_WORKSPACE_MANAGER, NULL);
 
@@ -217,14 +213,6 @@ meta_workspace_manager_new (MetaDisplay *display)
 
   meta_workspace_manager_init_workspaces (workspace_manager);
 
-  reload_logical_monitors (workspace_manager);
-
-  g_signal_connect_object (monitor_manager,
-                           "monitors-changed",
-                           G_CALLBACK (reload_logical_monitors),
-                           workspace_manager,
-                           G_CONNECT_SWAPPED);
-
   meta_prefs_add_listener (prefs_changed_callback, workspace_manager);
 
   return workspace_manager;
@@ -247,6 +235,8 @@ meta_workspace_manager_init_workspaces (MetaWorkspaceManager *workspace_manager)
   meta_workspace_manager_update_num_workspaces (workspace_manager, META_CURRENT_TIME, num);
 
   meta_workspace_activate (workspace_manager->workspaces->data, META_CURRENT_TIME);
+
+  meta_workspace_manager_reload_work_areas (workspace_manager);
 }
 
 int

@@ -55,6 +55,8 @@ void meta_workspace_manager_update_workspace_layout (MetaWorkspaceManager *works
                                                      int                   n_rows,
                                                      int                   n_columns);
 
+void meta_workspace_manager_reload_work_areas (MetaWorkspaceManager *workspace_manager);
+
 typedef struct MetaWorkspaceLayout MetaWorkspaceLayout;
 
 struct MetaWorkspaceLayout
