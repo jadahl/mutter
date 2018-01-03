@@ -2978,6 +2978,8 @@ on_monitors_changed_internal (MetaMonitorManager *manager,
   MetaBackend *backend;
   MetaCursorRenderer *cursor_renderer;
 
+  meta_workspace_manager_reload_work_areas (display->workspace_manager);
+
   /* Fix up monitor for all windows on this display */
   meta_display_foreach_window (display, META_LIST_INCLUDE_OVERRIDE_REDIRECT,
                                (MetaDisplayWindowFunc)
