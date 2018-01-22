@@ -139,6 +139,14 @@ meta_screen_cast_monitor_stream_src_record_frame (MetaScreenCastStreamSrc *src,
   MetaMonitor *monitor;
   MetaLogicalMonitor *logical_monitor;
 
+    {
+      int i;
+      for (i = 0; i < 1024 * 400; i++)
+        {
+          ((uint32_t*)data)[i] = 0xff00ffff;
+        }
+    }
+
   stage = get_stage (monitor_src);
   monitor = get_monitor (monitor_src);
   logical_monitor = meta_monitor_get_logical_monitor (monitor);
